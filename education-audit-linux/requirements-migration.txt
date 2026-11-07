@@ -1,0 +1,3 @@
+-r requirements.txt
+# Optional one-time transfer from MySQL; not needed for normal startup.
+PyMySQL[rsa]>=1.1.1,<2
