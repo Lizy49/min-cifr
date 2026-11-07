@@ -1,0 +1,21 @@
+{
+  "школа": [
+    {"id": "news", "name": "Новости", "keywords": ["новост", "событ"], "check_freshness": true, "max_age_weeks": 2},
+    {"id": "events", "name": "Мероприятия на текущий и следующий квартал", "keywords": ["мероприят", "план работ", "план мероприятий"], "check_freshness": false},
+    {"id": "documents", "name": "Документы", "keywords": ["документ", "устав", "лицензи", "аккредитац"], "check_freshness": false},
+    {"id": "schedule", "name": "Расписание", "keywords": ["расписан"], "check_freshness": false},
+    {"id": "about", "name": "Сведения о школе", "keywords": ["сведения об организации", "об учреждени", "о школе", "основные сведения"], "check_freshness": false},
+    {"id": "management", "name": "Информация о руководстве", "keywords": ["руководств", "директор", "администраци"], "check_freshness": false},
+    {"id": "teachers", "name": "Сведения о педагогах", "keywords": ["педагогическ", "учител", "преподавател", "состав работников"], "check_freshness": false},
+    {"id": "contacts", "name": "Контакты", "keywords": ["контакт"], "check_freshness": false}
+  ],
+  "детский сад": [
+    {"id": "main", "name": "Главная страница", "keywords": [], "check_freshness": false},
+    {"id": "news", "name": "Новости", "keywords": ["новост", "событ"], "check_freshness": true, "max_age_weeks": 2},
+    {"id": "staff", "name": "Коллектив и педагоги", "keywords": ["коллектив", "педагог", "воспитател", "состав работников"], "check_freshness": false},
+    {"id": "programs", "name": "Образовательные программы", "keywords": ["образовательн", "программ"], "check_freshness": false},
+    {"id": "documents", "name": "Документы", "keywords": ["документ", "устав", "лицензи", "аккредитац"], "check_freshness": false},
+    {"id": "staff_info", "name": "Педагогам и сотрудникам", "keywords": ["педагогам и сотрудник", "сотрудник"], "check_freshness": false},
+    {"id": "contacts", "name": "Контактная информация", "keywords": ["контакт"], "check_freshness": false}
+  ]
+}
