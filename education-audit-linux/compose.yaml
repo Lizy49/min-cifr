@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+      DATABASE_PATH: /app/data/education_audit.sqlite3
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - sqlite_data:/app/data
+volumes:
+  sqlite_data:
