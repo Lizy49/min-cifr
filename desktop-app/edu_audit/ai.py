@@ -43,6 +43,15 @@ class AIError(Exception):
 
 def configuration():
     provider = os.getenv("AI_PROVIDER", "ollama").strip().lower()
+    if provider == "deepseek":
+        api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+        return {
+            "provider": provider,
+            "model": os.getenv("DEEPSEEK_MODEL", "deepseek-chat").strip() or "deepseek-chat",
+            "enabled": bool(api_key),
+            "api_key": api_key,
+            "base_url": os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/"),
+        }
     if provider == "gemini":
         api_key = os.getenv("GEMINI_API_KEY", "").strip()
         return {
@@ -79,6 +88,8 @@ def public_state():
     config = configuration()
     if config["provider"] == "gigachat":
         label = "GigaChat · настроен" if config["enabled"] else "GigaChat · ключ не задан"
+    elif config["provider"] == "deepseek":
+        label = "DeepSeek · настроен" if config["enabled"] else "DeepSeek · API-ключ не задан"
     elif config["provider"] == "ollama":
         label = "Ollama · настроен" if config["enabled"] else "Правила аудита · ИИ выключен"
     elif config["provider"] == "gemini":
@@ -182,6 +193,42 @@ def _gemini_request(session, config, payload):
     return response.json()
 
 
+def _deepseek_request(session, config, messages, *, max_tokens=16, temperature=0):
+    if not config["base_url"].startswith("https://"):
+        raise AIError("Для DeepSeek требуется HTTPS endpoint.")
+    response = session.post(
+        config["base_url"] + "/chat/completions",
+        headers={"Authorization": "Bearer " + config["api_key"],
+                 "Content-Type": "application/json", "Accept": "application/json"},
+        json={"model": config["model"], "messages": messages, "stream": False,
+              "max_tokens": max_tokens, "temperature": temperature},
+        timeout=(10, 90), allow_redirects=False,
+    )
+    if not 200 <= response.status_code < 300:
+        messages_by_status = {
+            400: "DeepSeek отклонил запрос. Проверьте параметры и модель.",
+            401: "DeepSeek не принял API-ключ. Проверьте DEEPSEEK_API_KEY.",
+            402: "Для DeepSeek недостаточно средств или доступного баланса.",
+            403: "У ключа DeepSeek нет доступа к API.",
+            404: "Endpoint или модель DeepSeek не найдены.",
+            422: "DeepSeek отклонил формат или размер запроса.",
+            429: "Достигнут лимит запросов DeepSeek. Повторите позже.",
+            500: "В DeepSeek произошла внутренняя ошибка.",
+            503: "DeepSeek временно недоступен или перегружен.",
+        }
+        raise AIError(messages_by_status.get(
+            response.status_code, f"DeepSeek API вернул HTTP {response.status_code}."
+        ))
+    data = response.json()
+    try:
+        content = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        raise AIError("DeepSeek вернул ответ неожиданного формата.")
+    if not isinstance(content, str) or not content.strip():
+        raise AIError("DeepSeek вернул пустой ответ.")
+    return content
+
+
 def _gemini_text(response):
     candidates = response.get("candidates", [])
     if not candidates:
@@ -212,7 +259,14 @@ def test_connection():
     try:
         with requests.Session() as session:
             session.trust_env = False
-            if config["provider"] == "gemini":
+            if config["provider"] == "deepseek":
+                _deepseek_request(
+                    session, config,
+                    [{"role": "user", "content": "Ответь только OK."}],
+                    max_tokens=8,
+                )
+                models = [config["model"]]
+            elif config["provider"] == "gemini":
                 response = _gemini_request(session, config, {
                     "contents": [{"role": "user", "parts": [{"text": "Ответь только OK."}]}],
                     "generationConfig": {"maxOutputTokens": 8, "temperature": 0},
@@ -243,7 +297,9 @@ def analyze(pages, findings, external_sources):
     common = {"enabled": config["enabled"], "provider": config["provider"], "model": config["model"]}
     if not config["enabled"]:
         msg = "ИИ выключен. Выполнены детерминированные проверки; смысловой анализ требует ручной сверки."
-        if config["provider"] == "gigachat":
+        if config["provider"] == "deepseek":
+            msg = "DeepSeek выбран, но API-ключ не задан. Добавьте DEEPSEEK_API_KEY в .env."
+        elif config["provider"] == "gigachat":
             msg = "GigaChat выбран, но ключ не задан. Добавьте GIGACHAT_CREDENTIALS в .env."
         elif config["provider"] == "gemini":
             msg = "Gemini выбран, но API-ключ не задан. Добавьте GEMINI_API_KEY в .env."
@@ -288,7 +344,18 @@ def analyze(pages, findings, external_sources):
     try:
         with requests.Session() as session:
             session.trust_env = False
-            if config["provider"] == "gemini":
+            if config["provider"] == "deepseek":
+                content = _deepseek_request(
+                    session, config,
+                    messages + [{
+                        "role": "system",
+                        "content": "Верни только корректный JSON-объект вида " +
+                                   json.dumps({"suggestions": []}, ensure_ascii=False) +
+                                   ". Не добавляй Markdown или пояснения.",
+                    }],
+                    max_tokens=2500, temperature=0.1,
+                )
+            elif config["provider"] == "gemini":
                 payload = {
                     "systemInstruction": {"parts": [{"text": system}]},
                     "contents": [{"role": "user", "parts": [{"text": json.dumps({
