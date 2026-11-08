@@ -5,12 +5,12 @@ import html
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv, set_key
+from dotenv import load_dotenv, set_key, unset_key
 
 from PyQt6.QtCore import QThread, pyqtSignal, Qt
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
-    QFrame, QHBoxLayout, QHeaderView, QLabel, QInputDialog, QLineEdit, QMainWindow,
+    QCheckBox, QFrame, QHBoxLayout, QHeaderView, QLabel, QInputDialog, QLineEdit, QMainWindow,
     QMessageBox, QProgressBar, QPushButton, QSplitter, QTabWidget, QTableWidget,
     QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget,
 )
@@ -91,11 +91,13 @@ class AISettingsDialog(QDialog):
         self.key = QLineEdit()
         self.key.setEchoMode(QLineEdit.EchoMode.Password)
         self.model = QLineEdit()
+        self.clear_key = QCheckBox("Удалить сохранённый ключ этого провайдера")
         self.hint = QLabel("Ключ хранится локально в desktop-app/.env и не отправляется в Git.")
         self.hint.setWordWrap(True)
         form.addRow("Провайдер", self.provider)
         form.addRow("API-ключ / credentials", self.key)
         form.addRow("Модель", self.model)
+        form.addRow("", self.clear_key)
         form.addRow("", self.hint)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
@@ -108,6 +110,8 @@ class AISettingsDialog(QDialog):
         _, key_name, model_name, default_model = self.PROVIDERS[self.provider.currentText()]
         self.key.setEnabled(bool(key_name))
         self.key.clear()
+        self.clear_key.setChecked(False)
+        self.clear_key.setEnabled(bool(key_name))
         self.key.setPlaceholderText(
             "Введите новый ключ; сохранённый ключ не отображается" if key_name else "Для локальной Ollama ключ не нужен"
         )
@@ -119,13 +123,17 @@ class AISettingsDialog(QDialog):
         if model_name:
             model = self.model.text().strip() or default_model
             set_key(str(self.env_path), model_name, model, quote_mode="always")
-        if key_name and self.key.text().strip():
+        if key_name and self.clear_key.isChecked():
+            unset_key(str(self.env_path), key_name)
+        elif key_name and self.key.text().strip():
             set_key(str(self.env_path), key_name, self.key.text().strip(), quote_mode="always")
         load_dotenv(self.env_path, override=True)
         os.environ["AI_PROVIDER"] = provider
         if model_name:
             os.environ[model_name] = self.model.text().strip() or default_model
-        if key_name and self.key.text().strip():
+        if key_name and self.clear_key.isChecked():
+            os.environ.pop(key_name, None)
+        elif key_name and self.key.text().strip():
             os.environ[key_name] = self.key.text().strip()
         try:
             self.env_path.chmod(0o600)
