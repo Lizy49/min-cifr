@@ -49,10 +49,11 @@ class AuditWorker(QThread):
     def run(self):
         service = AuditService(self.db_path, crawler_options=self.crawler_options)
         try:
-            for organization in self.organizations:
+            total = len(self.organizations)
+            for index, organization in enumerate(self.organizations, start=1):
                 if self.isInterruptionRequested():
                     break
-                self.progress.emit("Проверяется: " + organization["name"])
+                self.progress.emit(f"[{index}/{total}] Проверяется: {organization['name']}")
                 try:
                     report = service.audit(
                         organization,
