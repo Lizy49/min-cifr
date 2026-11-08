@@ -43,6 +43,10 @@ def export_html(report, destination):
             f'<p>{esc(item.get("explanation"))}</p><p><b>Рекомендация:</b> {esc(item.get("recommendation"))}</p>'
             f'{"".join(evidence)}</article>'
         )
+    findings = report.get("findings", [])
+    problems = sum(item.get("status") in ("warning", "error") for item in findings)
+    unknown = sum(item.get("status") == "unknown" for item in findings)
+    passed = sum(item.get("status") == "pass" for item in findings)
     page = f"""<!doctype html><html lang="ru"><head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1"><title>Отчёт — {esc(org["name"])}</title>
     <style>body{{font:15px/1.55 Arial,sans-serif;color:#202939;max-width:1000px;margin:32px auto;padding:0 22px}}
@@ -53,6 +57,7 @@ def export_html(report, destination):
     <p><b>Сайт:</b> <a href="{esc(org["url"])}">{esc(org["url"])}</a></p>
     <p><b>Дата:</b> {esc(report.get("created_at"))}</p>
     <p><b>Проверено страниц:</b> {len(report.get("pages", []))}</p>
+    <p><b>Итог:</b> замечаний/проблем — {problems}; ручная проверка — {unknown}; пройдено — {passed}.</p>
     <p><b>Ограниченный обход:</b> {"Да" if report.get("meta", {}).get("limited") else "Нет"}</p>
     <p>{esc(report.get("meta", {}).get("note"))}</p>{"".join(rows)}
     </body></html>"""

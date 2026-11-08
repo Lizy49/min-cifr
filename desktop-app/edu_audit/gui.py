@@ -301,11 +301,15 @@ class MainWindow(QMainWindow):
             ]
             for col, value in enumerate(values):
                 self.findings.setItem(row, col, QTableWidgetItem(str(value)))
+        problems = sum(item.get("status") in ("warning", "error") for item in findings)
+        unknown = sum(item.get("status") == "unknown" for item in findings)
+        passed = sum(item.get("status") == "pass" for item in findings)
         self.details.setHtml(
             f"<h2>{html.escape(report['organization']['name'])}</h2>"
             f"<p><b>Сайт:</b> {html.escape(report['organization']['url'])}</p>"
             f"<p>Страниц загружено: {len(report.get('pages', []))}. "
             f"Ограниченный обход: {'да' if report.get('meta', {}).get('limited') else 'нет'}.</p>"
+            f"<p><b>Итог:</b> найдено замечаний/проблем: {problems}; требуют ручной проверки: {unknown}; пройдено проверок: {passed}.</p>"
             "<p>Выберите строку замечания, чтобы увидеть основание и доказательства.</p>"
         )
         self.export_html_button.setEnabled(True)

@@ -61,3 +61,24 @@ def test_reference_is_unique_per_kind_and_latest_report_can_be_loaded(tmp_path):
     storage.set_reference(garden["id"], db)
     assert storage.get_reference("garden", db)["id"] == garden["id"]
     assert storage.get_reference("school", db)["id"] == school2["id"]
+
+
+
+def test_initialize_migrates_database_without_reference_column(tmp_path):
+    import sqlite3
+    db = tmp_path / "legacy.sqlite3"
+    with sqlite3.connect(db) as connection:
+        connection.execute("""
+            CREATE TABLE organizations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK(kind IN ('school','garden')),
+                url TEXT NOT NULL UNIQUE,
+                source TEXT NOT NULL DEFAULT '',
+                enabled INTEGER NOT NULL DEFAULT 1
+            )
+        """)
+    storage.initialize(db)
+    with sqlite3.connect(db) as connection:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(organizations)")}
+    assert "is_reference" in columns
