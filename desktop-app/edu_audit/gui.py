@@ -89,7 +89,7 @@ class AISettingsDialog(QDialog):
         form = QFormLayout(self)
         self.provider = QComboBox()
         self.provider.addItems(self.PROVIDERS.keys())
-        current = os.getenv("AI_PROVIDER", "ollama").strip().lower()
+        current = os.getenv("AI_PROVIDER", "alice").strip().lower()
         for index, name in enumerate(self.PROVIDERS):
             if self.PROVIDERS[name][0] == current:
                 self.provider.setCurrentIndex(index)
