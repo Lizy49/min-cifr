@@ -283,10 +283,11 @@ def _alice_request(session, config, prompt, *, max_tokens, instructions=None):
     }
     response = session.post(
         "https://ai.api.cloud.yandex.net/v1/responses",
+        # Match Yandex AI Studio's documented raw HTTP example. The folder
+        # is already part of the gpt:// model URI; OpenAI-Project is not a
+        # Yandex header and can trigger request validation errors.
         headers={"Authorization": "Api-Key " + config["api_key"],
-                 "OpenAI-Project": config["folder_id"],
-                 "Content-Type": "application/json",
-                 "Accept": "application/json"},
+                 "Content-Type": "application/json"},
         json=payload, timeout=(10, 90), allow_redirects=False,
     )
     if response.status_code == 400:
