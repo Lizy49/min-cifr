@@ -73,3 +73,30 @@ def test_ai_settings_dialog_can_remove_saved_provider_key(tmp_path, monkeypatch)
     assert public_state()["enabled"] is False
     dialog.close()
     app.processEvents()
+
+
+def test_controls_fit_small_and_laptop_windows(tmp_path, monkeypatch):
+    from PyQt6.QtWidgets import QPushButton
+    from PyQt6.QtGui import QFontDatabase
+    from pathlib import Path
+    monkeypatch.setattr(storage, "DEFAULT_DB", tmp_path / "layout.sqlite3")
+    app = QApplication.instance() or QApplication([])
+    font = Path("C:/Windows/Fonts/segoeui.ttf")
+    if font.exists():
+        QFontDatabase.addApplicationFont(str(font))
+    from edu_audit.gui import MainWindow
+    window = MainWindow()
+    for width, height in ((800, 600), (1024, 768), (1366, 768)):
+        window.resize(width, height)
+        window.show()
+        window.cancel_button.setVisible(True)
+        for index in range(window.tabs.count()):
+            window.tabs.setCurrentIndex(index)
+            app.processEvents()
+            assert window.width() == width
+            for button in window.findChildren(QPushButton):
+                if button.isVisible():
+                    assert button.width() >= button.sizeHint().width(), button.text()
+                    assert button.height() >= button.sizeHint().height(), button.text()
+    window.close()
+    app.processEvents()

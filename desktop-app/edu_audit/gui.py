@@ -10,7 +10,7 @@ from dotenv import load_dotenv, set_key, unset_key
 from PyQt6.QtCore import QThread, pyqtSignal, Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
-    QCheckBox, QFrame, QHBoxLayout, QHeaderView, QLabel, QInputDialog, QLineEdit, QMainWindow,
+    QCheckBox, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QInputDialog, QLineEdit, QMainWindow,
     QMessageBox, QProgressBar, QPushButton, QSplitter, QTabWidget, QTableWidget,
     QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget,
 )
@@ -156,8 +156,8 @@ class MainWindow(QMainWindow):
         self.current_report = None
         self.specification = None
         self.setWindowTitle("Gosweb Audit — аудит сайтов образования")
-        self.resize(1480, 960)
-        self.setMinimumSize(960, 680)
+        self.resize(1180, 780)
+        self.setMinimumSize(800, 600)
         self._build_ui()
         self.refresh_registry()
         self.refresh_history()
@@ -190,16 +190,17 @@ class MainWindow(QMainWindow):
         content = QWidget()
         content.setObjectName("MainContent")
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(28, 24, 28, 22)
-        layout.setSpacing(16)
-        shell.addWidget(sidebar)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(10)
+        sidebar.setParent(root)
+        sidebar.hide()
         shell.addWidget(content, 1)
 
         heading = QHBoxLayout()
         title_box = QVBoxLayout()
-        title = QLabel("GOSWEB AUDIT")
+        title = QLabel("Аудит сайтов образования")
         title.setObjectName("Title")
-        subtitle = QLabel("Проверка актуальности и полноты сайтов образовательных организаций Магаданской области")
+        subtitle = QLabel("Школы и детские сады · Магаданская область")
         subtitle.setObjectName("Subtitle")
         subtitle.setWordWrap(True)
         title_box.addWidget(title)
@@ -214,10 +215,10 @@ class MainWindow(QMainWindow):
         metrics.setSpacing(12)
         self.metric_values = {}
         for key, caption in (
-            ("organizations", "ОРГАНИЗАЦИЙ В РЕЕСТРЕ"),
-            ("checked", "УЖЕ ПРОВЕРЕНО"),
-            ("runs", "ЗАПУСКОВ АУДИТА"),
-            ("ai", "ИИ-ПРОВАЙДЕР"),
+            ("organizations", "Учреждения"),
+            ("checked", "Проверены"),
+            ("runs", "Запуски"),
+            ("ai", "Помощник ИИ"),
         ):
             card = QFrame()
             card.setObjectName("MetricCard")
@@ -226,15 +227,17 @@ class MainWindow(QMainWindow):
             card_layout.setSpacing(5)
             value = QLabel("—")
             value.setObjectName("MetricValue")
+            value.setWordWrap(True)
             label = QLabel(caption)
             label.setObjectName("MetricCaption")
+            label.setWordWrap(True)
             card_layout.addWidget(value)
             card_layout.addWidget(label)
             metrics.addWidget(card, 1)
             self.metric_values[key] = value
         layout.addLayout(metrics)
 
-        filters = QHBoxLayout()
+        filters = QGridLayout()
         self.kind_filter = QComboBox()
         self.kind_filter.addItem("Все учреждения", "")
         self.kind_filter.addItem("Школы", "school")
@@ -252,26 +255,27 @@ class MainWindow(QMainWindow):
         self.search_timer.setInterval(250)
         self.search_timer.timeout.connect(self.refresh_registry)
         self.search.textChanged.connect(lambda _text: self.search_timer.start())
-        filters.addWidget(self.kind_filter)
-        filters.addWidget(self.search, 1)
-        filters.addWidget(QLabel("Режим:"))
-        filters.addWidget(self.speed_preset)
+        filters.addWidget(self.search, 0, 0, 1, 2)
+        filters.addWidget(self.kind_filter, 0, 2)
+        filters.addWidget(QLabel("Глубина проверки"), 1, 0)
+        filters.addWidget(self.speed_preset, 1, 1, 1, 2)
+        filters.setColumnStretch(1, 1)
 
         actions = QHBoxLayout()
         self.set_reference_button = QPushButton("Назначить эталоном")
         self.set_reference_button.clicked.connect(self.set_reference)
-        self.fact_sources_button = QPushButton("Источники фактчекинга")
+        self.fact_sources_button = QPushButton("Источники новостей")
         self.fact_sources_button.clicked.connect(self.edit_fact_sources)
-        self.check_selected_button = QPushButton("Проверить выбранное")
-        self.check_all_button = QPushButton("Проверить весь список")
+        self.check_selected_button = QPushButton("Проверить выбранные")
+        self.check_all_button = QPushButton("Проверить список")
         self.cancel_button = QPushButton("Остановить")
         self.cancel_button.setEnabled(False)
         self.cancel_button.setVisible(False)
         self.cancel_button.setToolTip("Остановить очередь после завершения текущего сайта")
         self.cancel_button.clicked.connect(self.cancel_checks)
         self.check_selected_button.setObjectName("PrimaryButton")
-        self.export_html_button = QPushButton("Экспорт отчёта HTML")
-        self.export_csv_button = QPushButton("Экспорт отчёта CSV")
+        self.export_html_button = QPushButton("Сохранить HTML")
+        self.export_csv_button = QPushButton("Сохранить CSV")
         self.export_summary_button = QPushButton("Сводка по учреждениям")
         self.export_summary_button.setToolTip("Сохранить таблицу результатов последних завершённых проверок")
         self.export_summary_button.clicked.connect(self.export_summary)
@@ -289,6 +293,7 @@ class MainWindow(QMainWindow):
         self.progress.hide()
         self.status = QLabel("Готово к проверке.")
         self.status.setObjectName("Status")
+        self.status.setWordWrap(True)
         layout.addWidget(self.progress)
         layout.addWidget(self.status)
 
@@ -413,7 +418,12 @@ class MainWindow(QMainWindow):
         )
         checklist_layout.addWidget(checklist)
         self.tabs.addTab(checklist_tab, "Правила проверки")
-        self.tabs.tabBar().hide()
+        self.tabs.tabBar().show()
+        self.tabs.setTabText(0, "Учреждения")
+        self.tabs.setTabText(1, "Результаты")
+        self.tabs.setTabText(3, "Помощник ИИ")
+        self.tabs.tabBar().setExpanding(True)
+        self.tabs.tabBar().setUsesScrollButtons(True)
 
         self.nav_buttons = []
         for label, index in (
@@ -441,121 +451,47 @@ class MainWindow(QMainWindow):
 
         self.findings.itemSelectionChanged.connect(self.show_finding_details)
         self.setStyleSheet("""
-            QMainWindow, QWidget {
-                background: #0b1020; color: #e8edf7;
-                font-family: "Inter", "Segoe UI", "Arial"; font-size: 13px;
-            }
-            QWidget#MainContent { background: #0b1020; }
-            QFrame#Sidebar {
-                background: #0d1525; border-right: 1px solid #1d2b43;
-            }
-            QLabel#Brand { color: #f4f7ff; font-size: 21px; font-weight: 900; letter-spacing: 1px; }
-            QLabel#BrandSubtitle {
-                color: #6f84a7; font-size: 9px; font-weight: 800; letter-spacing: 2px;
-                padding-left: 29px;
-            }
-            QLabel#NavCaption {
-                color: #657896; font-size: 9px; font-weight: 800; letter-spacing: 1.2px;
-                padding: 4px 8px;
-            }
-            QPushButton#NavButton {
-                text-align: left; color: #93a3bd; background: transparent;
-                border: 1px solid transparent; border-radius: 9px;
-                padding: 13px 11px; font-weight: 650;
-            }
-            QPushButton#NavButton:hover {
-                color: #e6edfb; background: #17243a; border-color: #263954;
-            }
-            QPushButton#NavButton:checked {
-                color: #a7f0df; background: #142d35; border: 1px solid #24534f;
-            }
-            QLabel#SidebarNote {
-                color: #667995; background: #111d30; border: 1px solid #1d2d45;
-                border-radius: 9px; padding: 12px; font-size: 10px; line-height: 1.5;
-            }
-            QWidget#qt_scrollarea_viewport { background: #11182a; }
-            QLabel#Title { color: #f7f9ff; font-size: 27px; font-weight: 850; letter-spacing: 1px; }
-            QLabel#SectionTitle { color: #f4f7ff; font-size: 20px; font-weight: 800; padding: 4px 0; }
-            QLabel#Subtitle { color: #8c9ab5; font-size: 13px; }
-            QLabel#Counter {
-                color: #8ce6d0; background: #102b32; border: 1px solid #1c5b59;
-                border-radius: 12px; padding: 10px 16px; font-size: 14px; font-weight: 700;
-            }
-            QLabel#Status { color: #a9b7d0; padding: 8px 4px; }
-            QFrame#MetricCard {
-                background: #121d31; border: 1px solid #283852; border-radius: 14px;
-            }
-            QLabel#MetricValue { color: #f4f7ff; font-size: 25px; font-weight: 800; }
-            QLabel#MetricCaption { color: #8e9fbb; font-size: 10px; font-weight: 750; letter-spacing: 1px; }
-            QLineEdit, QComboBox {
-                background: #151e32; color: #edf2ff; border: 1px solid #2a3853;
-                border-radius: 10px; padding: 11px 13px; min-height: 20px;
-                selection-background-color: #526ee8;
-            }
-            QLineEdit:focus, QComboBox:focus { border: 1px solid #7188ff; }
-            QComboBox::drop-down { border: 0; width: 26px; }
-            QComboBox QAbstractItemView {
-                background: #151e32; color: #edf2ff; border: 1px solid #34425e;
-                selection-background-color: #293b68; padding: 6px;
-            }
-            QPushButton {
-                background: #1a2540; color: #dce6fb; border: 1px solid #344463;
-                border-radius: 10px; padding: 11px 15px; font-weight: 650;
-            }
-            QPushButton:hover { background: #263656; border-color: #647ba9; }
-            QPushButton:pressed { background: #17233c; }
-            QPushButton:disabled { color: #64718a; background: #151c2c; border-color: #242f45; }
-            QPushButton#PrimaryButton {
-                color: #07131c; border: 0; font-weight: 800;
-                background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #73e5cb, stop:1 #6aa9ff);
-            }
-            QPushButton#PrimaryButton:hover {
-                background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #9af4df, stop:1 #8bbcff);
-            }
-            QTabWidget::pane {
-                background: #11182a; border: 1px solid #26344d; border-radius: 14px; top: -1px;
-            }
-            QTabBar::tab {
-                background: #11182a; color: #8d9bb6; padding: 13px 19px;
-                margin-right: 5px; border-top-left-radius: 10px; border-top-right-radius: 10px;
-                font-weight: 650;
-            }
-            QTabBar::tab:hover { color: #dce8ff; background: #1a2740; }
-            QTabBar::tab:selected {
-                color: #a5f0df; background: #192740; border-bottom: 2px solid #72ddc5;
-            }
-            QTableWidget {
-                background: #11182a; alternate-background-color: #151f33;
-                color: #dce5f5; border: 0; gridline-color: #202c43;
-                selection-background-color: #293d66; selection-color: #ffffff;
-                outline: 0; padding: 8px;
-            }
-            QTableWidget::item { padding: 9px 7px; border-bottom: 1px solid #202b41; }
-            QTableWidget::item:selected { background: #2b426d; color: #ffffff; }
-            QHeaderView::section {
-                background: #19253b; color: #9fb0cc; padding: 12px 9px;
-                border: 0; border-bottom: 1px solid #2a3a56; font-weight: 750;
-            }
-            QTableCornerButton::section { background: #19253b; border: 0; }
-            QSplitter::handle { background: #26344d; height: 3px; }
-            QTextBrowser {
-                background: #10182a; color: #dce5f5; border: 1px solid #26344d;
-                border-radius: 10px; padding: 14px; selection-background-color: #344d7c;
-            }
-            QTextBrowser a { color: #7edfcf; }
-            QProgressBar {
-                background: #18233a; border: 0; border-radius: 5px;
-                min-height: 7px; max-height: 7px; text-align: center;
-            }
-            QProgressBar::chunk {
-                border-radius: 5px;
-                background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #6ee7c8, stop:1 #6d9fff);
-            }
-            QScrollBar:vertical { background: #10182a; width: 11px; margin: 2px; }
-            QScrollBar::handle:vertical { background: #34435f; min-height: 28px; border-radius: 5px; }
-            QScrollBar::handle:vertical:hover { background: #536789; }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+            QMainWindow, QWidget { background:#f4f7fb; color:#213047; font-family:"Segoe UI"; font-size:13px; }
+            QLabel { background:transparent; }
+            QLabel#Title { color:#152b49; font-size:25px; font-weight:700; }
+            QLabel#Subtitle, QLabel#MetricCaption { color:#586b82; }
+            QLabel#Counter { color:#146354; background:#e2f3ed; border-radius:8px; padding:8px 12px; }
+            QLabel#Status { color:#52657c; padding:2px; }
+            QFrame#MetricCard { background:white; border:1px solid #dce5ef; border-radius:10px; }
+            QLabel#MetricValue { font-size:20px; font-weight:700; color:#183956; }
+            QLineEdit, QComboBox { background:white; color:#213047; border:1px solid #bdcddd;
+                border-radius:6px; padding:7px 10px; min-height:22px; selection-background-color:#d1e6fc; }
+            QLineEdit:focus, QComboBox:focus { border:1px solid #237bba; }
+            QComboBox::drop-down { width:25px; border:0; }
+            QComboBox QAbstractItemView { background:white; color:#213047; selection-background-color:#dceefa; }
+            QPushButton { background:white; border:1px solid #bacbdc; border-radius:6px;
+                color:#254564; padding:8px 12px; min-height:20px; font-weight:600; }
+            QPushButton:hover { background:#eaf2fb; border-color:#6693ba; }
+            QPushButton:pressed { background:#d8e8f7; }
+            QPushButton:disabled { background:#edf1f5; color:#7b8999; border-color:#d7e0e9; }
+            QPushButton#PrimaryButton { background:#126b60; color:white; border:1px solid #126b60; }
+            QPushButton#PrimaryButton:hover { background:#0c574e; }
+            QTabWidget::pane { background:white; border:1px solid #dce5ef; border-radius:8px; }
+            QTabBar::tab { background:#e9eff6; color:#465c76; padding:10px 14px;
+                border-top-left-radius:7px; border-top-right-radius:7px; margin-right:3px; }
+            QTabBar::tab:selected { background:white; color:#126b60; border-bottom:3px solid #126b60; }
+            QTableWidget { background:white; alternate-background-color:#f5f8fc; color:#213047;
+                border:1px solid #dce5ef; border-radius:5px; gridline-color:#e8eef5;
+                selection-background-color:#d6eafa; selection-color:#173c59; }
+            QTableWidget::item { padding:5px; }
+            QHeaderView::section { background:#eaf0f7; color:#3e536d; padding:8px 6px;
+                border:0; border-bottom:1px solid #d5e0ec; font-weight:600; }
+            QTableCornerButton::section { background:#eaf0f7; border:0; }
+            QTextBrowser { background:white; color:#213047; border:1px solid #dce5ef;
+                border-radius:6px; padding:12px; }
+            QSplitter::handle { background:#dce5ef; height:5px; }
+            QProgressBar { border:0; background:#e0e9f2; min-height:6px; max-height:6px; }
+            QProgressBar::chunk { background:#159080; }
+            QScrollBar:vertical { background:#eef3f8; width:12px; }
+            QScrollBar::handle:vertical { background:#afc1d3; min-height:28px; border-radius:5px; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height:0; }
         """)
+
 
     def refresh_registry(self, *_):
         kind = self.kind_filter.currentData()
@@ -574,6 +510,7 @@ class MainWindow(QMainWindow):
             ]
             for col, value in enumerate(values):
                 cell = QTableWidgetItem(str(value))
+                cell.setToolTip(str(value))
                 if col == 0:
                     cell.setData(Qt.ItemDataRole.UserRole, org)
                 self.registry.setItem(row, col, cell)
@@ -628,7 +565,7 @@ class MainWindow(QMainWindow):
             return
         current = "\n".join(selected[0].get("fact_sources", []))
         value, accepted = QInputDialog.getMultiLineText(
-            self, "Источники фактчекинга",
+            self, "Источники новостей",
             "Введите до пяти публичных URL независимых источников, по одному на строку. "
             "Эти страницы будут переданы ИИ для смысловой сверки.",
             current,
@@ -800,7 +737,7 @@ class MainWindow(QMainWindow):
         proof = []
         for evidence in item.get("evidence", []):
             proof.append(
-                f'<div style="padding:12px;background:#17243a;border:1px solid #2a3c58;border-radius:10px;margin:10px 0">'
+                f'<div style="padding:12px;background:#f0f6fb;border:1px solid #ccdce9;border-radius:10px;margin:10px 0">'
                 f'<a href="{html.escape(evidence.get("url",""), quote=True)}">{html.escape(evidence.get("title") or evidence.get("url",""))}</a>'
                 f'<p>{html.escape(evidence.get("snippet",""))}</p>'
                 f'<small>HTTP {html.escape(str(evidence.get("status_code","—")))}</small></div>'
