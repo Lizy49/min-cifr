@@ -219,9 +219,19 @@ def test_deepseek_analysis_compares_reference_site_and_keeps_reference_urls(monk
         "findings": [{"rule": "section.about", "status": "pass", "title": "Раздел найден"}],
     }
 
-    result = ai.analyze(target, [], [], reference=reference, organization_kind="school")
+    imported = [{
+        "id": "REQ-001", "text": "Публикации должны выходить не реже одного раза в 14 дней.",
+        "category": "news", "verification": "news_frequency",
+        "threshold": {"max_interval_days": 14}, "review_required": True,
+    }]
+    result = ai.analyze(
+        target, [], [], reference=reference, organization_kind="school",
+        requirements=imported,
+    )
 
     assert result["status"] == "completed"
+    assert seen["imported_requirements"][0]["id"] == "REQ-001"
+    assert seen["imported_requirements"][0]["threshold"] == {"max_interval_days": 14}
     assert seen["technical_specification_checklist"]["organization_type"] == "school"
     assert any("14 дней" in item for item in seen["technical_specification_checklist"]["criteria"])
     assert seen["reference_site"]["organization"] == "Эталонная школа"
