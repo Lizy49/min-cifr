@@ -15,7 +15,7 @@ import requests
 from .rules import REQUIRED, SECTION_TITLES
 
 ROOT = Path(__file__).resolve().parents[1]
-ALICE_MODEL = "aliceai-llm/latest"
+ALICE_MODEL = "aliceai-llm"
 _TOKEN_LOCK = threading.Lock()
 _TOKENS = {}
 SCHEMA = {
@@ -290,9 +290,9 @@ def _alice_request(session, config, prompt, *, max_tokens, instructions=None):
             401: "Алиса AI не приняла API-ключ.",
             402: "Проверьте баланс и настройки оплаты в Yandex Cloud.",
             403: (
-                "Yandex Cloud отказал в доступе (HTTP 403). Сверьте ID каталога. "
-                "В этом каталоге сервисному аккаунту нужны роли ai.languageModels.user "
-                "и ai.assistants.editor, а ключу — область yc.ai.foundationModels.execute."
+                "Yandex Cloud отказал в доступе (HTTP 403). Сверьте ID каталога, "
+                "роль сервисного аккаунта ai.languageModels.user и область ключа "
+                "yc.ai.foundationModels.execute."
             ),
             404: "Каталог или модель Алисы AI не найдены.",
             429: "Достигнут лимит запросов Алисы AI. Повторите позже.",
@@ -300,15 +300,57 @@ def _alice_request(session, config, prompt, *, max_tokens, instructions=None):
         raise AIError(messages_by_status.get(
             response.status_code, f"Алиса AI вернула HTTP {response.status_code}."
         ))
-    body = response.json()
-    if body.get("status") != "completed":
+    try:
+        body = response.json()
+    except ValueError:
+        raise AIError("Алиса AI вернула некорректный JSON-ответ.") from None
+    if not isinstance(body, dict):
+        raise AIError("Алиса AI вернула ответ неожиданного формата.")
+    status = body.get("status")
+    if status != "completed":
+        if status in ("queued", "in_progress"):
+            raise AIError("Алиса AI ещё обрабатывает запрос. Повторите проверку чуть позже.")
+        if status == "incomplete":
+            reason = body.get("incomplete_details", {})
+            reason = reason.get("reason", "") if isinstance(reason, dict) else ""
+            if reason == "max_output_tokens":
+                raise AIError("Алиса AI не успела завершить ответ: увеличьте лимит выходных токенов.")
+            raise AIError("Алиса AI вернула неполный ответ.")
+        if status == "failed":
+            error = body.get("error", {})
+            code = error.get("code", "") if isinstance(error, dict) else ""
+            safe_code = code if isinstance(code, str) and re.fullmatch(r"[a-zA-Z0-9_-]{1,60}", code) else ""
+            suffix = f" Код: {safe_code}." if safe_code else ""
+            raise AIError("Алиса AI завершила запрос с ошибкой." + suffix)
         raise AIError("Алиса AI не завершила ответ.")
-    content = "".join(
-        part["text"]
-        for item in body.get("output", []) if item.get("type") == "message"
-        for part in item.get("content", []) if part.get("type") == "output_text"
-    )
-    if not content.strip():
+    output = body.get("output", [])
+    if not isinstance(output, list):
+        output = []
+    final_messages = [
+        item for item in output
+        if isinstance(item, dict) and item.get("type") == "message"
+        and item.get("phase") == "final_answer"
+    ]
+    message_items = final_messages or [
+        item for item in output
+        if isinstance(item, dict) and item.get("type") == "message"
+    ]
+    chunks = []
+    for item in message_items:
+        parts = item.get("content", [])
+        if not isinstance(parts, list):
+            continue
+        chunks.extend(
+            part.get("text", "")
+            for part in parts
+            if isinstance(part, dict) and part.get("type") == "output_text"
+            and isinstance(part.get("text"), str)
+        )
+    content = "".join(chunks).strip()
+    if not content:
+        fallback = body.get("output_text")
+        content = fallback.strip() if isinstance(fallback, str) else ""
+    if not content:
         raise AIError("Алиса AI не вернула текст ответа.")
     return content
 
