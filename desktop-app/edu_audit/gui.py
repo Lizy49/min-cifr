@@ -67,7 +67,7 @@ class AISettingsDialog(QDialog):
     """Local-only provider settings; API secrets are stored in desktop-app/.env."""
 
     PROVIDERS = {
-        "DeepSeek": ("deepseek", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL", "deepseek-chat"),
+        "DeepSeek": ("deepseek", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL", "deepseek-flash"),
         "Gemini": ("gemini", "GEMINI_API_KEY", "GEMINI_MODEL", "gemini-3.5-flash-lite"),
         "GigaChat": ("gigachat", "GIGACHAT_CREDENTIALS", "GIGACHAT_MODEL", "GigaChat"),
         "Ollama (локально)": ("ollama", "", "OLLAMA_MODEL", ""),
