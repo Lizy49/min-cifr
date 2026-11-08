@@ -271,16 +271,22 @@ def _alice_bad_request(response):
 def _alice_request(session, config, prompt, *, max_tokens, instructions=None):
     if "*" in config["api_key"] or "…" in config["api_key"]:
         raise AIError("Ключ выглядит замаскированным. Вставьте полный API-ключ, сохранённый при создании.")
+    # Yandex's documented Responses API quickstart accepts a plain-text input.
+    # Keep system guidance inside input instead of sending optional OpenAI fields
+    # (store/instructions) that may be rejected by the provider's compatibility layer.
+    full_input = f"{instructions}\\n\\n{prompt}" if instructions else prompt
     payload = {
-        "model": config["model"], "input": prompt, "store": False,
-        "max_output_tokens": max_tokens, "temperature": 0.1,
+        "model": config["model"],
+        "input": full_input,
+        "max_output_tokens": max_tokens,
+        "temperature": 0.1,
     }
-    if instructions:
-        payload["instructions"] = instructions
     response = session.post(
         "https://ai.api.cloud.yandex.net/v1/responses",
         headers={"Authorization": "Api-Key " + config["api_key"],
-                 "OpenAI-Project": config["folder_id"]},
+                 "OpenAI-Project": config["folder_id"],
+                 "Content-Type": "application/json",
+                 "Accept": "application/json"},
         json=payload, timeout=(10, 90), allow_redirects=False,
     )
     if response.status_code == 400:
