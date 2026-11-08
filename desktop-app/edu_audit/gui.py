@@ -7,13 +7,14 @@ from pathlib import Path
 from PyQt6.QtCore import QThread, pyqtSignal, Qt
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QHBoxLayout, QHeaderView, QLabel,
-    QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton, QSplitter,
+    QInputDialog, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton, QSplitter,
     QTabWidget, QTableWidget, QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget,
 )
 
 from . import storage
 from .exporters import export_csv, export_html
 from .service import AuditService
+from .ai import public_state, test_connection
 
 STATUS_LABELS = {
     "completed": "Завершена", "failed": "Не удалось проверить",
@@ -102,7 +103,10 @@ class MainWindow(QMainWindow):
         actions = QHBoxLayout()
         self.set_reference_button = QPushButton("Назначить эталоном")
         self.set_reference_button.clicked.connect(self.set_reference)
+        self.fact_sources_button = QPushButton("Источники фактчекинга")
+        self.fact_sources_button.clicked.connect(self.edit_fact_sources)
         actions.addWidget(self.set_reference_button)
+        actions.addWidget(self.fact_sources_button)
         self.check_selected_button = QPushButton("Проверить выбранное")
         self.check_all_button = QPushButton("Проверить весь список")
         self.export_html_button = QPushButton("Экспорт отчёта HTML")
@@ -178,6 +182,18 @@ class MainWindow(QMainWindow):
         history_layout.addWidget(self.history)
         self.tabs.addTab(history_tab, "История")
 
+        ai_tab = QWidget()
+        ai_layout = QVBoxLayout(ai_tab)
+        self.ai_state_label = QLabel(public_state()["label"])
+        self.ai_check_button = QPushButton("Проверить подключение ИИ")
+        self.ai_check_button.clicked.connect(self.check_ai_connection)
+        self.ai_details = QTextBrowser()
+        self.ai_details.setOpenExternalLinks(True)
+        ai_layout.addWidget(self.ai_state_label)
+        ai_layout.addWidget(self.ai_check_button)
+        ai_layout.addWidget(self.ai_details, 1)
+        self.tabs.addTab(ai_tab, "ИИ-анализ")
+
         self.findings.itemSelectionChanged.connect(self.show_finding_details)
         self.setStyleSheet("""
             QMainWindow,QWidget { background:#f4f6fa; color:#1f2937; font-family:Arial; font-size:13px; }
@@ -248,6 +264,38 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self, "Ошибка", str(exc))
 
+    def edit_fact_sources(self):
+        selected = self._selected_organizations()
+        if len(selected) != 1:
+            QMessageBox.information(self, "Gosweb Audit", "Выберите ровно одно учреждение.")
+            return
+        current = "\n".join(selected[0].get("fact_sources", []))
+        value, accepted = QInputDialog.getMultiLineText(
+            self, "Источники фактчекинга",
+            "Введите до пяти публичных URL независимых источников, по одному на строку. "
+            "Эти страницы будут переданы ИИ для смысловой сверки.",
+            current,
+        )
+        if not accepted:
+            return
+        try:
+            storage.set_fact_sources(selected[0]["id"], value.splitlines(), self.db_path)
+            self.refresh_registry()
+            QMessageBox.information(self, "Gosweb Audit", "Внешние источники сохранены.")
+        except Exception as exc:
+            QMessageBox.critical(self, "Ошибка настройки источников", str(exc))
+
+    def check_ai_connection(self):
+        result = test_connection()
+        self.ai_state_label.setText(public_state()["label"])
+        details = [
+            f"<h3>{html.escape(result.get('message', ''))}</h3>",
+            f"<p>Статус: {html.escape(result.get('status', 'unknown'))}</p>",
+        ]
+        for model in result.get("models", []):
+            details.append(f"<p>{html.escape(str(model))}</p>")
+        self.ai_details.setHtml("".join(details))
+
     def check_selected(self):
         selected = self._selected_organizations()
         if not selected:
@@ -314,6 +362,26 @@ class MainWindow(QMainWindow):
         )
         self.export_html_button.setEnabled(True)
         self.export_csv_button.setEnabled(True)
+        ai = report.get("meta", {}).get("ai", {})
+        cards = [f"<h3>{html.escape(ai.get('message', 'ИИ-анализ не выполнялся.'))}</h3>"]
+        cards.append(
+            f"<p>Провайдер: {html.escape(str(ai.get('provider', '—')))} · "
+            f"модель: {html.escape(str(ai.get('model', '—')))} · "
+            f"статус: {html.escape(str(ai.get('status', '—')))}</p>"
+        )
+        for suggestion in ai.get("suggestions", []):
+            cards.append(
+                f"<section><h3>{html.escape(suggestion.get('title', ''))}</h3>"
+                f"<p>{html.escape(suggestion.get('reason', ''))}</p>"
+                f"<p><b>Рекомендация:</b> {html.escape(suggestion.get('recommendation', ''))}</p>"
+            )
+            for url in suggestion.get("urls", []):
+                safe = html.escape(url, quote=True)
+                cards.append(f'<p><a href="{safe}">{safe}</a></p>')
+            cards.append("<p><i>Подсказка ИИ — гипотеза для ручной проверки.</i></p></section>")
+        for error in report.get("meta", {}).get("external_errors", []):
+            cards.append(f"<p>Ошибка внешнего источника: {html.escape(error)}</p>")
+        self.ai_details.setHtml("".join(cards))
         self.tabs.setCurrentIndex(1)
 
     def show_finding_details(self):
