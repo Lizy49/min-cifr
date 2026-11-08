@@ -24,10 +24,10 @@ STATUS_LABELS = {
 
 
 class AIConnectionWorker(QThread):
-    finished = pyqtSignal(dict)
+    result_ready = pyqtSignal(dict)
 
     def run(self):
-        self.finished.emit(test_connection())
+        self.result_ready.emit(test_connection())
 
 
 class AuditWorker(QThread):
@@ -312,7 +312,7 @@ class MainWindow(QMainWindow):
         self.ai_check_button.setEnabled(False)
         self.ai_check_button.setText("Проверяем соединение…")
         self.ai_worker = AIConnectionWorker()
-        self.ai_worker.finished.connect(self._ai_connection_finished)
+        self.ai_worker.result_ready.connect(self._ai_connection_finished)
         self.ai_worker.start()
 
     def _ai_connection_finished(self, result):
