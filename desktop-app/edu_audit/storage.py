@@ -34,6 +34,10 @@ def initialize(db_path=None):
             is_reference INTEGER NOT NULL DEFAULT 0,
             fact_sources_json TEXT NOT NULL DEFAULT '[]'
         );
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value_json TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             org_id INTEGER NOT NULL REFERENCES organizations(id),
@@ -192,3 +196,25 @@ def set_fact_sources(org_id, urls, db_path=None):
         ).rowcount
         if not changed:
             raise ValueError("Учреждение не найдено.")
+
+
+
+def set_setting(key, value, db_path=None):
+    """Persist local application settings as JSON in SQLite."""
+    with connect(db_path) as db:
+        db.execute(
+            "INSERT INTO app_settings(key,value_json) VALUES(?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",
+            (str(key), json.dumps(value, ensure_ascii=False)),
+        )
+
+
+def get_setting(key, db_path=None, default=None):
+    with connect(db_path) as db:
+        row = db.execute("SELECT value_json FROM app_settings WHERE key=?", (str(key),)).fetchone()
+    if not row:
+        return default
+    try:
+        return json.loads(row["value_json"])
+    except (TypeError, ValueError):
+        return default
