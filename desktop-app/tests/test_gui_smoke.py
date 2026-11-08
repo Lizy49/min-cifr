@@ -44,3 +44,23 @@ def test_ai_settings_dialog_saves_deepseek_key_only_to_local_env(tmp_path, monke
     assert dialog.env_path.stat().st_mode & 0o777 == 0o600
     dialog.close()
     app.processEvents()
+
+
+
+def test_ai_settings_dialog_can_remove_saved_provider_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "deepseek")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "old-secret")
+    app = QApplication.instance() or QApplication([])
+    from edu_audit.gui import AISettingsDialog
+    from edu_audit.ai import public_state
+
+    dialog = AISettingsDialog()
+    dialog.env_path = tmp_path / ".env"
+    dialog.clear_key.setChecked(True)
+    dialog.save_settings()
+
+    assert "DEEPSEEK_API_KEY" not in dialog.env_path.read_text(encoding="utf-8")
+    assert "DEEPSEEK_API_KEY" not in os.environ
+    assert public_state()["enabled"] is False
+    dialog.close()
+    app.processEvents()
