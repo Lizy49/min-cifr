@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
 from . import storage
 from .exporters import export_csv, export_html, export_summary_csv, export_summary_html
 from .service import AuditService
-from .ai import public_state, test_connection
+from .ai import ALICE_MODEL, public_state, test_connection
 
 STATUS_LABELS = {
     "completed": "Завершена", "failed": "Не удалось проверить",
@@ -74,7 +74,7 @@ class AISettingsDialog(QDialog):
     """Local-only provider settings; API secrets are stored in desktop-app/.env."""
 
     PROVIDERS = {
-        "Алиса AI (Yandex Cloud)": ("alice", "YANDEX_API_KEY", "", "aliceai-llm"),
+        "Алиса AI (Yandex Cloud)": ("alice", "YANDEX_API_KEY", "", ALICE_MODEL),
         "DeepSeek": ("deepseek", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL", "deepseek-flash"),
         "Gemini": ("gemini", "GEMINI_API_KEY", "GEMINI_MODEL", "gemini-3.5-flash-lite"),
         "GigaChat": ("gigachat", "GIGACHAT_CREDENTIALS", "GIGACHAT_MODEL", "GigaChat"),

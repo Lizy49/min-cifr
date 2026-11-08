@@ -14,6 +14,7 @@ import requests
 from .rules import REQUIRED, SECTION_TITLES
 
 ROOT = Path(__file__).resolve().parents[1]
+ALICE_MODEL = "aliceai-llm/latest"
 _TOKEN_LOCK = threading.Lock()
 _TOKENS = {}
 SCHEMA = {
@@ -50,7 +51,7 @@ def configuration():
         folder_id = os.getenv("YANDEX_FOLDER_ID", "").strip()
         return {
             "provider": provider,
-            "model": f"gpt://{folder_id}/aliceai-llm" if folder_id else "aliceai-llm",
+            "model": f"gpt://{folder_id}/{ALICE_MODEL}" if folder_id else ALICE_MODEL,
             "enabled": bool(api_key and folder_id),
             "api_key": api_key,
             "folder_id": folder_id,
@@ -249,14 +250,16 @@ def _deepseek_request(session, config, messages, *, max_tokens=16, temperature=0
 
 
 def _alice_request(session, config, messages, *, max_tokens, json_mode=False):
+    if "*" in config["api_key"] or "…" in config["api_key"]:
+        raise AIError("Ключ выглядит замаскированным. Вставьте полный API-ключ, сохранённый при создании.")
     payload = {
-        "model": config["model"], "messages": messages, "stream": False,
-        "max_tokens": max_tokens, "temperature": 0.1,
+        "model": config["model"], "input": messages, "store": False,
+        "max_output_tokens": max_tokens, "temperature": 0.1,
     }
     if json_mode:
-        payload["response_format"] = {"type": "json_object"}
+        payload["text"] = {"format": {"type": "json_object"}}
     response = session.post(
-        "https://ai.api.cloud.yandex.net/v1/chat/completions",
+        "https://ai.api.cloud.yandex.net/v1/responses",
         headers={"Authorization": "Api-Key " + config["api_key"],
                  "OpenAI-Project": config["folder_id"]},
         json=payload, timeout=(10, 90), allow_redirects=False,
@@ -266,17 +269,27 @@ def _alice_request(session, config, messages, *, max_tokens, json_mode=False):
             400: "Алиса AI отклонила запрос. Проверьте ID каталога в Yandex AI Studio.",
             401: "Алиса AI не приняла API-ключ.",
             402: "Проверьте баланс и настройки оплаты в Yandex Cloud.",
-            403: "У ключа нет доступа к каталогу или модели Алисы AI.",
+            403: (
+                "Yandex Cloud отказал в доступе (HTTP 403). Сверьте ID каталога. "
+                "В этом каталоге сервисному аккаунту нужны роли ai.languageModels.user "
+                "и ai.assistants.editor, а ключу — область yc.ai.foundationModels.execute."
+            ),
             404: "Каталог или модель Алисы AI не найдены.",
             429: "Достигнут лимит запросов Алисы AI. Повторите позже.",
         }
         raise AIError(messages_by_status.get(
             response.status_code, f"Алиса AI вернула HTTP {response.status_code}."
         ))
-    choice = response.json()["choices"][0]
-    content = choice["message"]["content"]
-    if choice.get("finish_reason") == "length" or not isinstance(content, str) or not content.strip():
-        raise AIError("Алиса AI вернула пустой или неполный ответ.")
+    body = response.json()
+    if body.get("status") != "completed":
+        raise AIError("Алиса AI не завершила ответ.")
+    content = "".join(
+        part["text"]
+        for item in body.get("output", []) if item.get("type") == "message"
+        for part in item.get("content", []) if part.get("type") == "output_text"
+    )
+    if not content.strip():
+        raise AIError("Алиса AI не вернула текст ответа.")
     return content
 
 
@@ -311,7 +324,13 @@ def test_connection():
         with requests.Session() as session:
             session.trust_env = False
             if config["provider"] == "alice":
-                _alice_request(session, config, [{"role": "user", "content": "Ответь только OK."}], max_tokens=16)
+                probe = _alice_request(
+                    session, config,
+                    [{"role": "user", "content": 'Верни JSON: {"ok": true}'}],
+                    max_tokens=128, json_mode=True,
+                )
+                if not isinstance(json.loads(probe), dict):
+                    raise AIError("Алиса AI не вернула JSON-объект.")
                 models = [config["model"]]
             elif config["provider"] == "deepseek":
                 _deepseek_request(
