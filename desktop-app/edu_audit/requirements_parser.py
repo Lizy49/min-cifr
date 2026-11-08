@@ -67,10 +67,35 @@ def _structure(text: str) -> dict:
     return {"kind": "manual", "threshold": {}, "review": True}
 
 
+def _paragraphs(text: str) -> list[str]:
+    paragraphs = []
+    current = ""
+    for raw in text.splitlines():
+        line = re.sub(r"\s+", " ", raw).strip()
+        if not line:
+            if current:
+                paragraphs.append(current)
+                current = ""
+            continue
+        starts_item = re.match(r"^(?:[•▪◦*-]|\d+[.)]|[–—])\s+", line)
+        if starts_item:
+            if current:
+                paragraphs.append(current)
+            current = re.sub(r"^(?:[•▪◦*-]|\d+[.)]|[–—])\s+", "", line)
+        elif current and current.endswith((".", "!", "?", ";")):
+            paragraphs.append(current)
+            current = line
+        else:
+            current = (current + " " + line).strip()
+    if current:
+        paragraphs.append(current)
+    return paragraphs
+
+
 def parse_text(text: str, source_name: str = "Техническое задание") -> dict:
     requirements = []
     seen = set()
-    for line in text.splitlines():
+    for line in _paragraphs(text):
         normalized = re.sub(r"\s+", " ", line).strip(" \t•▪◦-*–—\r")
         if len(normalized) < 18:
             continue
@@ -110,5 +135,10 @@ def parse_specification(file_path: str | Path) -> dict:
         if content.strip():
             text_parts.append(content)
     result = parse_text("\n".join(text_parts), path.name)
+    if not result["total"]:
+        raise ValueError(
+            "Не удалось извлечь текст из документа. Возможно, PDF состоит из сканов; "
+            "для такой версии потребуется OCR или текстовый DOCX/TXT."
+        )
     result["pages_or_blocks"] = len(blocks)
     return result
