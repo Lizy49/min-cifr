@@ -81,7 +81,7 @@ class AISettingsDialog(QDialog):
         form = QFormLayout(self)
         self.provider = QComboBox()
         self.provider.addItems(self.PROVIDERS.keys())
-        current = os.getenv("AI_PROVIDER", "deepseek").strip().lower()
+        current = os.getenv("AI_PROVIDER", "ollama").strip().lower()
         for index, name in enumerate(self.PROVIDERS):
             if self.PROVIDERS[name][0] == current:
                 self.provider.setCurrentIndex(index)
@@ -255,6 +255,9 @@ class MainWindow(QMainWindow):
         self.registry.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.registry.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.registry.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.registry.setAlternatingRowColors(True)
+        self.registry.verticalHeader().setVisible(False)
+        self.registry.verticalHeader().setDefaultSectionSize(42)
         registry_layout.addWidget(self.registry)
         self.tabs.addTab(registry_tab, "Реестр учреждений")
 
@@ -270,6 +273,9 @@ class MainWindow(QMainWindow):
         self.findings.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         self.findings.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.findings.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.findings.setAlternatingRowColors(True)
+        self.findings.verticalHeader().setVisible(False)
+        self.findings.verticalHeader().setDefaultSectionSize(42)
         self.details = QTextBrowser()
         self.details.setOpenExternalLinks(True)
         splitter.addWidget(self.findings)
@@ -289,6 +295,9 @@ class MainWindow(QMainWindow):
         self.history.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         self.history.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         self.history.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.history.setAlternatingRowColors(True)
+        self.history.verticalHeader().setVisible(False)
+        self.history.verticalHeader().setDefaultSectionSize(42)
         self.history.itemSelectionChanged.connect(self.load_selected_history)
         history_layout.addWidget(self.history)
         self.tabs.addTab(history_tab, "История")
