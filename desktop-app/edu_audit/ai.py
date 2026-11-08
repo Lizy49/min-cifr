@@ -416,6 +416,10 @@ def analyze(pages, findings, external_sources, reference=None):
         if not isinstance(data, dict) or not isinstance(data.get("suggestions"), list):
             raise AIError("ИИ не вернул ожидаемый список подсказок.")
         allowed = {page["url"] for page in pages + external_sources}
+        allowed.update(
+            page.get("url", "") for page in reference.get("pages", [])
+            if isinstance(page, dict) and page.get("url")
+        )
         suggestions = []
         for item in data["suggestions"][:8]:
             if not isinstance(item, dict):
