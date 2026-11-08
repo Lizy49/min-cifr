@@ -274,7 +274,7 @@ def _alice_request(session, config, prompt, *, max_tokens, instructions=None):
     # Yandex's documented Responses API quickstart accepts a plain-text input.
     # Keep system guidance inside input instead of sending optional OpenAI fields
     # (store/instructions) that may be rejected by the provider's compatibility layer.
-    full_input = f"{instructions}\\n\\n{prompt}" if instructions else prompt
+    full_input = f"{instructions}\n\n{prompt}" if instructions else prompt
     payload = {
         "model": config["model"],
         "input": full_input,
