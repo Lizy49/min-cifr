@@ -19,6 +19,7 @@ from . import storage
 from .exporters import export_csv, export_html
 from .service import AuditService
 from .ai import public_state, test_connection
+from .requirements_parser import parse_specification
 
 STATUS_LABELS = {
     "completed": "Завершена", "failed": "Не удалось проверить",
@@ -150,6 +151,7 @@ class MainWindow(QMainWindow):
         self.db_path = self.service.db_path
         self.worker = None
         self.current_report = None
+        self.specification = None
         self.setWindowTitle("Gosweb Audit — аудит сайтов образования")
         self.resize(1480, 960)
         self.setMinimumSize(1080, 760)
@@ -365,6 +367,32 @@ class MainWindow(QMainWindow):
         ai_layout.addLayout(ai_actions)
         ai_layout.addWidget(self.ai_details, 1)
         self.tabs.addTab(ai_tab, "ИИ-анализ")
+
+        spec_tab = QWidget()
+        spec_layout = QVBoxLayout(spec_tab)
+        spec_heading = QLabel("Разбор технического задания")
+        spec_heading.setObjectName("SectionTitle")
+        spec_description = QLabel(
+            "Загрузите исходное ТЗ в PDF, DOCX или TXT. Приложение выделит отдельные требования, "
+            "попробует распознать явные числовые критерии и оставит неоднозначные пункты на ручную проверку."
+        )
+        spec_description.setObjectName("Subtitle")
+        spec_description.setWordWrap(True)
+        self.load_spec_button = QPushButton("Выбрать файл технического задания")
+        self.load_spec_button.setObjectName("PrimaryButton")
+        self.load_spec_button.clicked.connect(self.load_specification)
+        self.spec_details = QTextBrowser()
+        self.spec_details.setOpenExternalLinks(False)
+        self.spec_details.setHtml(
+            "<h2>Техническое задание ещё не загружено</h2>"
+            "<p>После импорта здесь появится список требований и результат их предварительной классификации.</p>"
+            "<p><b>Важно:</b> извлечение создаёт черновик. Оно не превращает предположения в доказанные нарушения.</p>"
+        )
+        spec_layout.addWidget(spec_heading)
+        spec_layout.addWidget(spec_description)
+        spec_layout.addWidget(self.load_spec_button)
+        spec_layout.addWidget(self.spec_details, 1)
+        self.tabs.addTab(spec_tab, "Техническое задание")
         self.tabs.tabBar().hide()
 
         self.nav_buttons = []
@@ -373,6 +401,7 @@ class MainWindow(QMainWindow):
             ("◉   Результаты проверки", 1),
             ("◷   История аудитов", 2),
             ("✧   ИИ-анализ", 3),
+            ("▤   Техническое задание", 4),
         ):
             button = QPushButton(label)
             button.setObjectName("NavButton")
@@ -426,6 +455,7 @@ class MainWindow(QMainWindow):
             }
             QWidget#qt_scrollarea_viewport { background: #11182a; }
             QLabel#Title { color: #f7f9ff; font-size: 27px; font-weight: 850; letter-spacing: 1px; }
+            QLabel#SectionTitle { color: #f4f7ff; font-size: 20px; font-weight: 800; padding: 4px 0; }
             QLabel#Subtitle { color: #8c9ab5; font-size: 13px; }
             QLabel#Counter {
                 color: #8ce6d0; background: #102b32; border: 1px solid #1c5b59;
@@ -556,6 +586,49 @@ class MainWindow(QMainWindow):
     def _selected_organizations(self):
         rows = sorted({item.row() for item in self.registry.selectedItems()})
         return [self.registry.item(row, 0).data(Qt.ItemDataRole.UserRole) for row in rows]
+
+    def load_specification(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Загрузить техническое задание", "",
+            "Документы (*.pdf *.docx *.txt);;PDF (*.pdf);;Word (*.docx);;Текст (*.txt)",
+        )
+        if not path:
+            return
+        try:
+            result = parse_specification(path)
+            self.specification = result
+            cards = [
+                f"<h2>{html.escape(result['source_name'])}</h2>",
+                f"<p><b>Найдено пунктов:</b> {result['total']} · "
+                f"<b>Распознано структурно:</b> {result['structured']} · "
+                f"<b>Нужна ручная классификация:</b> {result['manual']}</p>",
+                f"<p>{html.escape(result['note'])}</p>",
+                "<hr>",
+            ]
+            for item in result["requirements"]:
+                threshold = ", ".join(
+                    f"{html.escape(key)} = {html.escape(str(value))}"
+                    for key, value in item["threshold"].items()
+                ) or "порог не определён"
+                mode = "Распознано, требуется подтверждение" if item["verification"] != "manual" else "Ручная классификация"
+                cards.append(
+                    f"<section><h3>{html.escape(item['id'])} · {html.escape(item['category'])}</h3>"
+                    f"<p>{html.escape(item['text'])}</p>"
+                    f"<p><b>Тип проверки:</b> {html.escape(item['verification'])} · "
+                    f"<b>Статус:</b> {mode}</p><p><b>Параметры:</b> {threshold}</p></section><hr>"
+                )
+            cards.append(
+                "<p><b>Ограничение текущей версии:</b> импортированный черновик пока не заменяет "
+                "встроенные правила проверки. Подтвердите критерии и сверяйте выводы с доказательствами.</p>"
+            )
+            self.spec_details.setHtml("".join(cards))
+            self.status.setText(
+                f"ТЗ загружено: {result['total']} требований; "
+                f"{result['structured']} распознано, {result['manual']} требуют классификации."
+            )
+            self.tabs.setCurrentIndex(4)
+        except (OSError, ValueError, ImportError) as exc:
+            QMessageBox.critical(self, "Не удалось разобрать ТЗ", str(exc))
 
     def set_reference(self):
         selected = self._selected_organizations()
