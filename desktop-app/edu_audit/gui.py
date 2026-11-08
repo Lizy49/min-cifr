@@ -223,6 +223,7 @@ class MainWindow(QMainWindow):
         self.check_all_button = QPushButton("Проверить весь список")
         self.cancel_button = QPushButton("Остановить")
         self.cancel_button.setEnabled(False)
+        self.cancel_button.setVisible(False)
         self.cancel_button.setToolTip("Остановить очередь после завершения текущего сайта")
         self.cancel_button.clicked.connect(self.cancel_checks)
         self.check_selected_button.setObjectName("PrimaryButton")
