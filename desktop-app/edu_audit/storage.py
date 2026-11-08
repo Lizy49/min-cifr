@@ -31,7 +31,8 @@ def initialize(db_path=None):
             url TEXT NOT NULL UNIQUE,
             source TEXT NOT NULL DEFAULT '',
             enabled INTEGER NOT NULL DEFAULT 1,
-            is_reference INTEGER NOT NULL DEFAULT 0
+            is_reference INTEGER NOT NULL DEFAULT 0,
+            fact_sources_json TEXT NOT NULL DEFAULT '[]'
         );
         CREATE TABLE IF NOT EXISTS runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,6 +52,9 @@ def initialize(db_path=None):
         columns = {row["name"] for row in db.execute("PRAGMA table_info(organizations)")}
         if "is_reference" not in columns:
             db.execute("ALTER TABLE organizations ADD COLUMN is_reference INTEGER NOT NULL DEFAULT 0")
+            columns.add("is_reference")
+        if "fact_sources_json" not in columns:
+            db.execute("ALTER TABLE organizations ADD COLUMN fact_sources_json TEXT NOT NULL DEFAULT '[]'")
 
 
 def seed_organizations(db_path=None, json_path=None):
@@ -82,7 +86,13 @@ def list_organizations(db_path=None, kind=None, query=""):
         params.append("%" + escaped + "%")
     sql += " ORDER BY kind, name"
     with connect(db_path) as db:
-        return [dict(row) for row in db.execute(sql, params).fetchall()]
+        rows = [dict(row) for row in db.execute(sql, params).fetchall()]
+    for row in rows:
+        try:
+            row["fact_sources"] = json.loads(row.pop("fact_sources_json", "[]"))
+        except (TypeError, ValueError):
+            row["fact_sources"] = []
+    return rows
 
 
 def save_run(report, db_path=None):
@@ -160,3 +170,25 @@ def latest_completed_run(org_id, db_path=None):
             (org_id,),
         ).fetchone()
     return load_run(row["id"], db_path) if row else None
+
+
+
+def set_fact_sources(org_id, urls, db_path=None):
+    """Store up to five user-configured public HTTP source URLs."""
+    from .crawler import normalize_url
+    cleaned = []
+    for value in urls:
+        if not str(value).strip():
+            continue
+        url = normalize_url(str(value))
+        if url not in cleaned:
+            cleaned.append(url)
+    if len(cleaned) > 5:
+        raise ValueError("Можно указать не более пяти внешних источников.")
+    with connect(db_path) as db:
+        changed = db.execute(
+            "UPDATE organizations SET fact_sources_json=? WHERE id=? AND enabled=1",
+            (json.dumps(cleaned, ensure_ascii=False), org_id),
+        ).rowcount
+        if not changed:
+            raise ValueError("Учреждение не найдено.")

@@ -401,6 +401,22 @@ class Crawler:
             "complete": not limited and not issues,
         }
 
+    def fetch_external_source(self, url):
+        """Read one configured public HTML source and respect that source's robots.txt."""
+        url = normalize_url(url)
+        if not self.permitted(url):
+            raise RuntimeError("Источник запрещён robots.txt или правила недоступны.")
+        response = self.client.get(url)
+        if response["status"] != 200:
+            raise RuntimeError(f"Внешний источник вернул HTTP {response['status']}.")
+        if "html" not in response["content_type"].lower() and b"<html" not in response["body"][:1000].lower():
+            raise RuntimeError("Внешний источник не является HTML-страницей.")
+        page = parse_html(response["url"], response["body"], response.get("encoding"))
+        page["status_code"] = 200
+        page["category"] = "external"
+        page["fetched_at"] = datetime.now().astimezone().isoformat()
+        return page
+
     def close(self):
         if hasattr(self.client, "session"):
             self.client.session.close()

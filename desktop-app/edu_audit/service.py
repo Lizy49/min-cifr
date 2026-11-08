@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .crawler import Crawler
 from .rules import check
+from .ai import analyze as analyze_with_ai
 from . import storage
 
 
@@ -26,6 +27,13 @@ class AuditService:
         finally:
             crawler.close()
         findings = check(organization["kind"], crawl)
+        external_sources, external_errors = [], []
+        for source_url in organization.get("fact_sources", [])[:5]:
+            try:
+                external_sources.append(crawler.fetch_external_source(source_url))
+            except Exception as exc:
+                external_errors.append(f"{source_url}: {str(exc)[:250]}")
+        ai_result = analyze_with_ai(crawl["pages"], findings, external_sources)
         reference = storage.get_reference(organization["kind"], self.db_path)
         if reference and reference["id"] != organization["id"]:
             reference_run = storage.latest_completed_run(reference["id"], self.db_path)
@@ -69,6 +77,9 @@ class AuditService:
                 "limited": crawl["limited"], "remaining": crawl["remaining"],
                 "issues": crawl["issues"], "complete": crawl["complete"],
                 "rules_version": "0.1.0",
+                "ai": ai_result,
+                "external_sources": [p.get("url", "") for p in external_sources],
+                "external_errors": external_errors,
                 "note": "Результат относится к загруженной выборке. Статус «Нужна ручная проверка» не является установленным нарушением.",
             },
         }
