@@ -25,10 +25,10 @@ def test_alice_reviews_required_sections_and_exports_grounded_suggestions(monkey
     source = "https://school.example/schedule"
     findings = [{"rule": f"section.{i}", "status": "unknown"} for i in range(28)]
 
-    def response(value):
+    def response(text):
         return Reply({"status": "completed", "output": [
             {"type": "reasoning"},
-            {"type": "message", "content": [{"type": "output_text", "text": json.dumps(value)}]},
+            {"type": "message", "content": [{"type": "output_text", "text": text}]},
         ]})
 
     def post(self, url, **kwargs):
@@ -38,17 +38,20 @@ def test_alice_reviews_required_sections_and_exports_grounded_suggestions(monkey
         payload = kwargs["json"]
         assert payload["model"] == "gpt://test-folder/aliceai-llm/latest"
         assert payload["store"] is False
-        assert payload["text"] == {"format": {"type": "json_object"}}
+        assert "text" not in payload
         assert "max_output_tokens" in payload
-        if len(payload["input"]) == 1:
-            return response({"ok": True})
-        context = json.loads(payload["input"][1]["content"])
+        assert isinstance(payload["input"], str)
+        if "instructions" not in payload:
+            assert payload["input"] == "Ответь одним словом: OK."
+            return response("OK")
+        assert "JSON" in payload["instructions"]
+        context = json.loads(payload["input"])
         assert any(page["url"] == source for page in context["site_pages"])
         assert len(context["rule_results"]) == len(findings)
         assert "Обязательный раздел: Расписание" in context["technical_specification_checklist"]["criteria"]
         suggestion = {"title": "<Сверить расписание>", "reason": "Есть разночтение.",
                       "recommendation": "Открыть страницу.", "urls": [source, "https://invented.example"]}
-        return response({"suggestions": [suggestion]})
+        return response("```json\n" + json.dumps({"suggestions": [suggestion]}) + "\n```")
 
     monkeypatch.setattr(requests.Session, "post", post)
     assert ai.test_connection()["status"] == "ok"
@@ -89,6 +92,22 @@ def test_alice_explains_403_without_exposing_key(monkeypatch):
     assert "HTTP 403" in result["message"]
     assert "ai.assistants.editor" in result["message"]
     assert "yc.ai.foundationModels.execute" in result["message"]
+    assert "test-secret" not in result["message"]
+
+
+def test_alice_bad_request_identifies_parameter_without_echoing_response(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "alice")
+    monkeypatch.setenv("YANDEX_FOLDER_ID", "test-folder")
+    monkeypatch.setenv("YANDEX_API_KEY", "test-secret")
+    reply = Reply({"error": {"param": "input", "message": "test-secret"}}, 400)
+    reply.headers = {"x-request-id": "request-123"}
+    monkeypatch.setattr(requests.Session, "post", lambda *args, **kwargs: reply)
+    result = ai.test_connection()
+    assert result["status"] == "failed"
+    assert "HTTP 400" in result["message"]
+    assert "параметр «input»" in result["message"]
+    assert "request-123" in result["message"]
+    assert "каталог" not in result["message"]
     assert "test-secret" not in result["message"]
 
 

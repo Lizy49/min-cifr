@@ -76,6 +76,9 @@ YANDEX_FOLDER_ID=
 сверьте ID каталога с каталогом сервисного аккаунта. Проверьте роли `ai.languageModels.user`
 и `ai.assistants.editor` на этом каталоге и область действия ключа `yc.ai.foundationModels.execute`.
 Подробности в [документации по доступу к API](https://aistudio.yandex.ru/ru/docs/ai-studio/api-ref/authentication).
+При HTTP 400 приложение показывает имя отклонённого параметра и ID запроса, если сервис их вернул.
+Проверка подключения отправляет короткий текст. При аудите модель получает инструкцию вернуть JSON,
+который приложение проверяет перед добавлением подсказок в отчёт.
 
 Также доступны Gemini, GigaChat и локальная Ollama. Для Gemini используйте `GEMINI_API_KEY`,
 для GigaChat — `GIGACHAT_CREDENTIALS`, для Ollama — `OLLAMA_URL` и `OLLAMA_MODEL`.

@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import threading
 import time
 import uuid
@@ -249,24 +250,43 @@ def _deepseek_request(session, config, messages, *, max_tokens=16, temperature=0
     return content
 
 
-def _alice_request(session, config, messages, *, max_tokens, json_mode=False):
+def _alice_bad_request(response):
+    try:
+        body = response.json()
+    except ValueError:
+        body = {}
+    error = body.get("error", {}) if isinstance(body, dict) else {}
+    param = error.get("param") if isinstance(error, dict) else None
+    message = "Yandex AI Studio отклонил параметры запроса (HTTP 400)."
+    if param in ("model", "modelUri", "folder_id"):
+        message += " Проверьте ID каталога и доступность модели в этом каталоге."
+    elif param in ("input", "instructions", "text", "store", "temperature", "max_output_tokens"):
+        message += f" Сервис указал параметр «{param}»."
+    request_id = getattr(response, "headers", {}).get("x-request-id", "")
+    if re.fullmatch(r"[A-Za-z0-9._-]{1,100}", request_id):
+        message += f" ID запроса: {request_id}."
+    return message
+
+
+def _alice_request(session, config, prompt, *, max_tokens, instructions=None):
     if "*" in config["api_key"] or "…" in config["api_key"]:
         raise AIError("Ключ выглядит замаскированным. Вставьте полный API-ключ, сохранённый при создании.")
     payload = {
-        "model": config["model"], "input": messages, "store": False,
+        "model": config["model"], "input": prompt, "store": False,
         "max_output_tokens": max_tokens, "temperature": 0.1,
     }
-    if json_mode:
-        payload["text"] = {"format": {"type": "json_object"}}
+    if instructions:
+        payload["instructions"] = instructions
     response = session.post(
         "https://ai.api.cloud.yandex.net/v1/responses",
         headers={"Authorization": "Api-Key " + config["api_key"],
                  "OpenAI-Project": config["folder_id"]},
         json=payload, timeout=(10, 90), allow_redirects=False,
     )
+    if response.status_code == 400:
+        raise AIError(_alice_bad_request(response))
     if not 200 <= response.status_code < 300:
         messages_by_status = {
-            400: "Алиса AI отклонила запрос. Проверьте ID каталога в Yandex AI Studio.",
             401: "Алиса AI не приняла API-ключ.",
             402: "Проверьте баланс и настройки оплаты в Yandex Cloud.",
             403: (
@@ -291,6 +311,14 @@ def _alice_request(session, config, messages, *, max_tokens, json_mode=False):
     if not content.strip():
         raise AIError("Алиса AI не вернула текст ответа.")
     return content
+
+
+def _parse_alice_json(content):
+    fenced = re.fullmatch(r"```(?:json)?\s*\n(.*?)\n\s*```", content.strip(), re.DOTALL | re.IGNORECASE)
+    try:
+        return json.loads(fenced[1] if fenced else content)
+    except ValueError:
+        raise AIError("Алиса AI вернула текст вместо JSON со списком подсказок.") from None
 
 
 def _gemini_text(response):
@@ -324,13 +352,7 @@ def test_connection():
         with requests.Session() as session:
             session.trust_env = False
             if config["provider"] == "alice":
-                probe = _alice_request(
-                    session, config,
-                    [{"role": "user", "content": 'Верни JSON: {"ok": true}'}],
-                    max_tokens=128, json_mode=True,
-                )
-                if not isinstance(json.loads(probe), dict):
-                    raise AIError("Алиса AI не вернула JSON-объект.")
+                _alice_request(session, config, "Ответь одним словом: OK.", max_tokens=256)
                 models = [config["model"]]
             elif config["provider"] == "deepseek":
                 _deepseek_request(
@@ -483,7 +505,10 @@ def analyze(pages, findings, external_sources, reference=None, organization_kind
         with requests.Session() as session:
             session.trust_env = False
             if config["provider"] == "alice":
-                content = _alice_request(session, config, messages, max_tokens=2500, json_mode=True)
+                content = _alice_request(
+                    session, config, messages[1]["content"], max_tokens=2500,
+                    instructions=system + " Выведи только JSON-объект без Markdown и пояснений.",
+                )
             elif config["provider"] == "deepseek":
                 content = _deepseek_request(
                     session, config,
@@ -525,7 +550,7 @@ def analyze(pages, findings, external_sources, reference=None, organization_kind
                 content = response.json()["message"]["content"]
             else:
                 raise AIError("Неизвестный провайдер ИИ.")
-            data = json.loads(content)
+            data = _parse_alice_json(content) if config["provider"] == "alice" else json.loads(content)
         if not isinstance(data, dict) or not isinstance(data.get("suggestions"), list):
             raise AIError("ИИ не вернул ожидаемый список подсказок.")
         allowed = {page["url"] for page in site_context + external_context + reference_pages}
