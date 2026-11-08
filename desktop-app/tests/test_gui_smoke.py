@@ -15,6 +15,8 @@ def test_main_window_constructs_with_a_fresh_database(tmp_path, monkeypatch):
     assert window.history.columnCount() == 6
     assert set(window.metric_values) == {"organizations", "checked", "runs", "ai"}
     assert window.ai_settings_button.isEnabled()
+    assert window.search_timer.interval() == 250
+    assert window.search_timer.isSingleShot()
     assert window.cancel_button.isHidden()
     window.close()
     app.processEvents()
