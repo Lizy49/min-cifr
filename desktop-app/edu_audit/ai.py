@@ -297,7 +297,7 @@ def test_connection():
         return {"status": "failed", "message": _safe_error(exc)}
 
 
-def analyze(pages, findings, external_sources, reference=None):
+def analyze(pages, findings, external_sources, reference=None, organization_kind=None):
     config = configuration()
     common = {"enabled": config["enabled"], "provider": config["provider"], "model": config["model"]}
     if not config["enabled"]:
@@ -325,6 +325,22 @@ def analyze(pages, findings, external_sources, reference=None):
         for page in external_sources[:5]
     ]
     reference = reference or {}
+    requirements_context = {
+        "organization_type": organization_kind or "unknown",
+        "criteria": (
+            [
+                "Обязательные разделы: новости, мероприятия, документы, расписание, сведения об учреждении, структура, сотрудники и контакты.",
+                "Новости: интервал между публикациями не более 14 дней.",
+                "Публикация новости о прошедшем событии — не позднее 24 часов после события, если обе даты и время подтверждены.",
+                "Мероприятия должны быть найдены на текущий и следующий квартал.",
+                "Проверять доступность документов, полноту сведений и контактную информацию.",
+            ] if organization_kind == "school" else [
+                "Обязательные разделы: главная страница, новости, сотрудники, образовательные программы, документы, информация для педагогов и контакты.",
+                "Проверять наличие и наполненность обязательных разделов, доступность документов и контактную информацию.",
+            ] if organization_kind == "garden" else []
+        ),
+        "interpretation": "Отсутствие данных в выборке означает необходимость ручной проверки, а не доказанное нарушение.",
+    }
     reference_pages = [
         {"url": page.get("url", ""), "title": page.get("title", ""),
          "kind": page.get("category", ""), "text": page.get("text", "")[:1800]}
@@ -363,6 +379,7 @@ def analyze(pages, findings, external_sources, reference=None):
         "external_sources": external_context,
         "rule_results": rule_context,
         "reference_site": reference_context,
+        "technical_specification_checklist": requirements_context,
     }
     messages = [
         {"role": "system", "content": system},
