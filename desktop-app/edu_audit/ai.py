@@ -47,7 +47,7 @@ def configuration():
         api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
         return {
             "provider": provider,
-            "model": os.getenv("DEEPSEEK_MODEL", "deepseek-chat").strip() or "deepseek-chat",
+            "model": os.getenv("DEEPSEEK_MODEL", "deepseek-flash").strip() or "deepseek-flash",
             "enabled": bool(api_key),
             "api_key": api_key,
             "base_url": os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/"),
@@ -193,16 +193,21 @@ def _gemini_request(session, config, payload):
     return response.json()
 
 
-def _deepseek_request(session, config, messages, *, max_tokens=16, temperature=0):
+def _deepseek_request(session, config, messages, *, max_tokens=16, temperature=0, json_mode=False):
     if not config["base_url"].startswith("https://"):
         raise AIError("Для DeepSeek требуется HTTPS endpoint.")
+    payload = {
+        "model": config["model"], "messages": messages, "stream": False,
+        "max_tokens": max_tokens, "temperature": temperature,
+        "thinking": {"type": "disabled"},
+    }
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
     response = session.post(
         config["base_url"] + "/chat/completions",
         headers={"Authorization": "Bearer " + config["api_key"],
                  "Content-Type": "application/json", "Accept": "application/json"},
-        json={"model": config["model"], "messages": messages, "stream": False,
-              "max_tokens": max_tokens, "temperature": temperature},
-        timeout=(10, 90), allow_redirects=False,
+        json=payload, timeout=(10, 90), allow_redirects=False,
     )
     if not 200 <= response.status_code < 300:
         messages_by_status = {
@@ -353,7 +358,7 @@ def analyze(pages, findings, external_sources):
                                    json.dumps({"suggestions": []}, ensure_ascii=False) +
                                    ". Не добавляй Markdown или пояснения.",
                     }],
-                    max_tokens=2500, temperature=0.1,
+                    max_tokens=2500, temperature=0.1, json_mode=True,
                 )
             elif config["provider"] == "gemini":
                 payload = {
