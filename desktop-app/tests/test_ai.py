@@ -6,6 +6,7 @@ import pytest
 import requests
 
 from edu_audit import ai
+from edu_audit.exporters import export_html
 
 
 class Reply:
@@ -15,6 +16,56 @@ class Reply:
 
     def json(self):
         return self.data
+
+
+def test_alice_reviews_required_sections_and_exports_grounded_suggestions(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_PROVIDER", "alice")
+    monkeypatch.setenv("YANDEX_API_KEY", "test-key")
+    monkeypatch.setenv("YANDEX_FOLDER_ID", "test-folder")
+    source = "https://school.example/schedule"
+    findings = [{"rule": f"section.{i}", "status": "unknown"} for i in range(28)]
+
+    def post(self, url, **kwargs):
+        assert url == "https://ai.api.cloud.yandex.net/v1/chat/completions"
+        assert kwargs["headers"] == {"Authorization": "Api-Key test-key", "OpenAI-Project": "test-folder"}
+        assert kwargs["allow_redirects"] is False
+        payload = kwargs["json"]
+        assert payload["model"] == "gpt://test-folder/aliceai-llm"
+        if "response_format" not in payload:
+            return Reply({"choices": [{"message": {"content": "OK"}}]})
+        context = json.loads(payload["messages"][1]["content"])
+        assert any(page["url"] == source for page in context["site_pages"])
+        assert len(context["rule_results"]) == len(findings)
+        assert "Обязательный раздел: Расписание" in context["technical_specification_checklist"]["criteria"]
+        suggestion = {"title": "<Сверить расписание>", "reason": "Есть разночтение.",
+                      "recommendation": "Открыть страницу.", "urls": [source, "https://invented.example"]}
+        return Reply({"choices": [{"message": {"content": json.dumps({"suggestions": [suggestion]})}}]})
+
+    monkeypatch.setattr(requests.Session, "post", post)
+    assert ai.test_connection()["status"] == "ok"
+    pages = [{"url": f"https://school.example/news/{i}", "title": "Новость",
+              "category": "news", "text": "Текст"} for i in range(25)]
+    pages.append({"url": source, "title": "Расписание", "category": "schedule", "text": "Текст"})
+    result = ai.analyze(pages, findings, [], organization_kind="school")
+    assert result["status"] == "completed"
+    assert result["suggestions"][0]["urls"] == [source]
+    report = {"organization": {"name": "Школа", "url": "https://school.example"}, "meta": {"ai": result}}
+    output = export_html(report, tmp_path / "audit.html").read_text(encoding="utf-8")
+    assert "&lt;Сверить расписание&gt;" in output
+    assert f'href="{source}"' in output
+
+
+def test_alice_requires_folder_and_reports_rate_limit(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "alice")
+    monkeypatch.setenv("YANDEX_API_KEY", "test-key")
+    monkeypatch.delenv("YANDEX_FOLDER_ID", raising=False)
+    assert ai.analyze([], [], [])["status"] == "disabled"
+    monkeypatch.setenv("YANDEX_FOLDER_ID", "test-folder")
+    monkeypatch.setattr(requests.Session, "post", lambda *args, **kwargs: Reply({}, 429))
+    result = ai.analyze([], [], [])
+    assert result["status"] == "failed"
+    assert "лимит" in result["message"]
+    assert result["suggestions"] == []
 
 
 def test_ai_disabled_keeps_rule_based_audit_available(monkeypatch):

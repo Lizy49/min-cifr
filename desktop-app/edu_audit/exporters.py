@@ -62,6 +62,22 @@ def export_html(report, destination):
     problems = sum(item.get("status") in ("warning", "error") for item in findings)
     unknown = sum(item.get("status") == "unknown" for item in findings)
     passed = sum(item.get("status") == "pass" for item in findings)
+    ai_result = report.get("meta", {}).get("ai") or {}
+    ai_rows = []
+    for item in ai_result.get("suggestions", []):
+        links = " · ".join(
+            f'<a href="{esc(url)}">{esc(url)}</a>'
+            for url in item.get("urls", []) if url.startswith(("https://", "http://"))
+        )
+        ai_rows.append(
+            f'<article><h3>{esc(item.get("title"))}</h3><p>{esc(item.get("reason"))}</p>'
+            f'<p><b>Рекомендация:</b> {esc(item.get("recommendation"))}</p>'
+            f'<div class="evidence">{links or "Ссылки для подтверждения не указаны."}</div></article>'
+        )
+    ai_section = (
+        f'<section><h2>ИИ-анализ · ручная сверка</h2><p>{esc(ai_result.get("message"))}</p>'
+        f'{"".join(ai_rows)}</section>' if ai_result else ""
+    )
     page = f"""<!doctype html><html lang="ru"><head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1"><title>Отчёт — {esc(org["name"])}</title>
     <style>body{{font:15px/1.55 Arial,sans-serif;color:#202939;max-width:1000px;margin:32px auto;padding:0 22px}}
@@ -77,7 +93,7 @@ def export_html(report, destination):
     <section class="summary">
     <p><b>Сначала проверьте:</b> {problems} замечаний/проблем; неопределённо — {unknown}; пройдено — {passed}.</p></section>
     <p><b>Ограниченный обход:</b> {"Да" if report.get("meta", {}).get("limited") else "Нет"}</p>
-    <p>{esc(report.get("meta", {}).get("note"))}</p>{"".join(rows)}
+    <p>{esc(report.get("meta", {}).get("note"))}</p>{"".join(rows)}{ai_section}
     </body></html>"""
     destination.write_text(page, encoding="utf-8")
     return destination

@@ -58,7 +58,23 @@ DEEPSEEK_MODEL=deepseek-flash
 
 Не добавляй ключ в Git или исходный код. Запросы идут на официальный HTTPS endpoint `https://api.deepseek.com/chat/completions`; таймауты и ошибки авторизации/лимитов показываются в приложении.
 
-Другие провайдеры остаются доступными при смене `AI_PROVIDER`: Gemini, GigaChat и локальная Ollama. Для Gemini используй `GEMINI_API_KEY`, для GigaChat — `GIGACHAT_CREDENTIALS`, для Ollama — `OLLAMA_URL` и `OLLAMA_MODEL`.
+Для Алисы откройте «ИИ-анализ → Настроить ИИ → Алиса AI (Yandex Cloud)».
+Введите API-ключ и ID каталога из [Yandex AI Studio](https://aistudio.yandex.ru/ru/docs/ai-studio/quickstart/),
+сохраните и нажмите «Проверить подключение». Можно задать те же параметры в локальном `.env`:
+
+```dotenv
+AI_PROVIDER=alice
+YANDEX_API_KEY=
+YANDEX_FOLDER_ID=
+```
+
+При аудите Алиса получает выдержки из выборки страниц, встроенный чек-лист ТЗ и результаты правил.
+Смысловые замечания видны во вкладке «ИИ-анализ» и HTML-отчёте как подсказки для ручной сверки.
+Один запуск проверки учреждения делает один запрос к модели. При ошибке API отчёт по правилам сохраняется.
+Запросы к Алисе могут расходовать баланс Yandex Cloud. Ключ из `.env` не публикуйте.
+
+Также доступны Gemini, GigaChat и локальная Ollama. Для Gemini используйте `GEMINI_API_KEY`,
+для GigaChat — `GIGACHAT_CREDENTIALS`, для Ollama — `OLLAMA_URL` и `OLLAMA_MODEL`.
 
 Локальный Ollama:
 ```dotenv

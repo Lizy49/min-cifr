@@ -74,6 +74,7 @@ class AISettingsDialog(QDialog):
     """Local-only provider settings; API secrets are stored in desktop-app/.env."""
 
     PROVIDERS = {
+        "Алиса AI (Yandex Cloud)": ("alice", "YANDEX_API_KEY", "", "aliceai-llm"),
         "DeepSeek": ("deepseek", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL", "deepseek-flash"),
         "Gemini": ("gemini", "GEMINI_API_KEY", "GEMINI_MODEL", "gemini-3.5-flash-lite"),
         "GigaChat": ("gigachat", "GIGACHAT_CREDENTIALS", "GIGACHAT_MODEL", "GigaChat"),
@@ -96,12 +97,16 @@ class AISettingsDialog(QDialog):
         self.key = QLineEdit()
         self.key.setEchoMode(QLineEdit.EchoMode.Password)
         self.model = QLineEdit()
+        self.folder_id = QLineEdit()
+        self.folder_id.setPlaceholderText("ID каталога из Yandex AI Studio")
         self.clear_key = QCheckBox("Удалить сохранённый ключ этого провайдера")
         self.hint = QLabel("Ключ хранится локально в desktop-app/.env и не отправляется в Git.")
         self.hint.setWordWrap(True)
         form.addRow("Провайдер", self.provider)
         form.addRow("API-ключ / credentials", self.key)
         form.addRow("Модель", self.model)
+        form.addRow("ID каталога", self.folder_id)
+        self.form = form
         form.addRow("", self.clear_key)
         form.addRow("", self.hint)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
@@ -112,7 +117,16 @@ class AISettingsDialog(QDialog):
         self._sync_fields()
 
     def _sync_fields(self):
-        _, key_name, model_name, default_model = self.PROVIDERS[self.provider.currentText()]
+        provider, key_name, model_name, default_model = self.PROVIDERS[self.provider.currentText()]
+        is_alice = provider == "alice"
+        self.form.setRowVisible(self.folder_id, is_alice)
+        self.folder_id.setText(os.getenv("YANDEX_FOLDER_ID", ""))
+        self.model.setReadOnly(is_alice)
+        self.hint.setText(
+            "Ключ хранится локально в .env. Алиса получает выдержки из проверенных страниц. "
+            "Запросы могут расходовать баланс Yandex Cloud." if is_alice else
+            "Ключ хранится локально в desktop-app/.env и не отправляется в Git."
+        )
         self.key.setEnabled(bool(key_name))
         self.key.clear()
         self.clear_key.setChecked(False)
@@ -120,11 +134,13 @@ class AISettingsDialog(QDialog):
         self.key.setPlaceholderText(
             "Введите новый ключ; сохранённый ключ не отображается" if key_name else "Для локальной Ollama ключ не нужен"
         )
-        self.model.setText(os.getenv(model_name, default_model) if model_name else "")
+        self.model.setText(os.getenv(model_name, default_model) if model_name else default_model)
 
     def save_settings(self):
         provider, key_name, model_name, default_model = self.PROVIDERS[self.provider.currentText()]
         set_key(str(self.env_path), "AI_PROVIDER", provider, quote_mode="always")
+        if provider == "alice":
+            set_key(str(self.env_path), "YANDEX_FOLDER_ID", self.folder_id.text().strip(), quote_mode="always")
         if model_name:
             model = self.model.text().strip() or default_model
             set_key(str(self.env_path), model_name, model, quote_mode="always")
@@ -381,6 +397,7 @@ class MainWindow(QMainWindow):
         ai_tab = QWidget()
         ai_layout = QVBoxLayout(ai_tab)
         self.ai_state_label = QLabel(public_state()["label"])
+        self.ai_state_label.setWordWrap(True)
         self.ai_settings_button = QPushButton("Настроить ИИ")
         self.ai_settings_button.clicked.connect(self.configure_ai)
         self.ai_check_button = QPushButton("Проверить подключение")
