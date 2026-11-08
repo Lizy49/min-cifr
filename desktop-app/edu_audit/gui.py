@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 import html
+import os
 from pathlib import Path
+
+from dotenv import load_dotenv, set_key
 
 from PyQt6.QtCore import QThread, pyqtSignal, Qt
 from PyQt6.QtWidgets import (
-    QApplication, QComboBox, QFileDialog, QHBoxLayout, QHeaderView, QLabel,
-    QInputDialog, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton, QSplitter,
-    QTabWidget, QTableWidget, QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget,
+    QApplication, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
+    QFrame, QHBoxLayout, QHeaderView, QLabel, QInputDialog, QLineEdit, QMainWindow,
+    QMessageBox, QProgressBar, QPushButton, QSplitter, QTabWidget, QTableWidget,
+    QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget,
 )
 
 from . import storage
@@ -59,6 +63,74 @@ class AuditWorker(QThread):
             self.all_done.emit()
 
 
+class AISettingsDialog(QDialog):
+    """Local-only provider settings; API secrets are stored in desktop-app/.env."""
+
+    PROVIDERS = {
+        "DeepSeek": ("deepseek", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL", "deepseek-chat"),
+        "Gemini": ("gemini", "GEMINI_API_KEY", "GEMINI_MODEL", "gemini-3.5-flash-lite"),
+        "GigaChat": ("gigachat", "GIGACHAT_CREDENTIALS", "GIGACHAT_MODEL", "GigaChat"),
+        "Ollama (локально)": ("ollama", "", "OLLAMA_MODEL", ""),
+    }
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Настройки ИИ")
+        self.setMinimumWidth(440)
+        self.env_path = Path(__file__).resolve().parents[1] / ".env"
+        form = QFormLayout(self)
+        self.provider = QComboBox()
+        self.provider.addItems(self.PROVIDERS.keys())
+        current = os.getenv("AI_PROVIDER", "deepseek").strip().lower()
+        for index, name in enumerate(self.PROVIDERS):
+            if self.PROVIDERS[name][0] == current:
+                self.provider.setCurrentIndex(index)
+                break
+        self.key = QLineEdit()
+        self.key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.model = QLineEdit()
+        self.hint = QLabel("Ключ хранится локально в desktop-app/.env и не отправляется в Git.")
+        self.hint.setWordWrap(True)
+        form.addRow("Провайдер", self.provider)
+        form.addRow("API-ключ / credentials", self.key)
+        form.addRow("Модель", self.model)
+        form.addRow("", self.hint)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        form.addRow(buttons)
+        self.provider.currentIndexChanged.connect(self._sync_fields)
+        self._sync_fields()
+
+    def _sync_fields(self):
+        _, key_name, model_name, default_model = self.PROVIDERS[self.provider.currentText()]
+        self.key.setEnabled(bool(key_name))
+        self.key.clear()
+        self.key.setPlaceholderText(
+            "Введите новый ключ; сохранённый ключ не отображается" if key_name else "Для локальной Ollama ключ не нужен"
+        )
+        self.model.setText(os.getenv(model_name, default_model) if model_name else "")
+
+    def save_settings(self):
+        provider, key_name, model_name, default_model = self.PROVIDERS[self.provider.currentText()]
+        set_key(str(self.env_path), "AI_PROVIDER", provider, quote_mode="always")
+        if model_name:
+            model = self.model.text().strip() or default_model
+            set_key(str(self.env_path), model_name, model, quote_mode="always")
+        if key_name and self.key.text().strip():
+            set_key(str(self.env_path), key_name, self.key.text().strip(), quote_mode="always")
+        load_dotenv(self.env_path, override=True)
+        os.environ["AI_PROVIDER"] = provider
+        if model_name:
+            os.environ[model_name] = self.model.text().strip() or default_model
+        if key_name and self.key.text().strip():
+            os.environ[key_name] = self.key.text().strip()
+        try:
+            self.env_path.chmod(0o600)
+        except OSError:
+            pass
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -68,8 +140,8 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.current_report = None
         self.setWindowTitle("Gosweb Audit — аудит сайтов образования")
-        self.resize(1420, 900)
-        self.setMinimumSize(1100, 720)
+        self.resize(1480, 960)
+        self.setMinimumSize(1080, 760)
         self._build_ui()
         self.refresh_registry()
         self.refresh_history()
@@ -94,6 +166,30 @@ class MainWindow(QMainWindow):
         self.counter.setObjectName("Counter")
         heading.addWidget(self.counter)
         layout.addLayout(heading)
+
+        metrics = QHBoxLayout()
+        metrics.setSpacing(12)
+        self.metric_values = {}
+        for key, caption in (
+            ("organizations", "ОРГАНИЗАЦИЙ В РЕЕСТРЕ"),
+            ("checked", "УЖЕ ПРОВЕРЕНО"),
+            ("runs", "ЗАПУСКОВ АУДИТА"),
+            ("ai", "ИИ-ПРОВАЙДЕР"),
+        ):
+            card = QFrame()
+            card.setObjectName("MetricCard")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(16, 13, 16, 13)
+            card_layout.setSpacing(5)
+            value = QLabel("—")
+            value.setObjectName("MetricValue")
+            label = QLabel(caption)
+            label.setObjectName("MetricCaption")
+            card_layout.addWidget(value)
+            card_layout.addWidget(label)
+            metrics.addWidget(card, 1)
+            self.metric_values[key] = value
+        layout.addLayout(metrics)
 
         filters = QHBoxLayout()
         self.kind_filter = QComboBox()
@@ -200,12 +296,18 @@ class MainWindow(QMainWindow):
         ai_tab = QWidget()
         ai_layout = QVBoxLayout(ai_tab)
         self.ai_state_label = QLabel(public_state()["label"])
-        self.ai_check_button = QPushButton("Проверить подключение ИИ")
+        self.ai_settings_button = QPushButton("Настроить ИИ")
+        self.ai_settings_button.clicked.connect(self.configure_ai)
+        self.ai_check_button = QPushButton("Проверить подключение")
+        self.ai_check_button.setObjectName("PrimaryButton")
         self.ai_check_button.clicked.connect(self.check_ai_connection)
         self.ai_details = QTextBrowser()
         self.ai_details.setOpenExternalLinks(True)
         ai_layout.addWidget(self.ai_state_label)
-        ai_layout.addWidget(self.ai_check_button)
+        ai_actions = QHBoxLayout()
+        ai_actions.addWidget(self.ai_settings_button)
+        ai_actions.addWidget(self.ai_check_button)
+        ai_layout.addLayout(ai_actions)
         ai_layout.addWidget(self.ai_details, 1)
         self.tabs.addTab(ai_tab, "ИИ-анализ")
 
@@ -223,6 +325,11 @@ class MainWindow(QMainWindow):
                 border-radius: 12px; padding: 10px 16px; font-size: 14px; font-weight: 700;
             }
             QLabel#Status { color: #a9b7d0; padding: 8px 4px; }
+            QFrame#MetricCard {
+                background: #121d31; border: 1px solid #283852; border-radius: 14px;
+            }
+            QLabel#MetricValue { color: #f4f7ff; font-size: 25px; font-weight: 800; }
+            QLabel#MetricCaption { color: #8e9fbb; font-size: 10px; font-weight: 750; letter-spacing: 1px; }
             QLineEdit, QComboBox {
                 background: #151e32; color: #edf2ff; border: 1px solid #2a3853;
                 border-radius: 10px; padding: 11px 13px; min-height: 20px;
@@ -267,6 +374,7 @@ class MainWindow(QMainWindow):
                 outline: 0; padding: 8px;
             }
             QTableWidget::item { padding: 9px 7px; border-bottom: 1px solid #202b41; }
+            QTableWidget::item:selected { background: #2b426d; color: #ffffff; }
             QHeaderView::section {
                 background: #19253b; color: #9fb0cc; padding: 12px 9px;
                 border: 0; border-bottom: 1px solid #2a3a56; font-weight: 750;
@@ -312,6 +420,15 @@ class MainWindow(QMainWindow):
                     cell.setData(Qt.ItemDataRole.UserRole, org)
                 self.registry.setItem(row, col, cell)
         self.counter.setText(f"{len(organizations)} учреждений")
+        all_organizations = storage.list_organizations(self.db_path)
+        self.metric_values["organizations"].setText(str(len(all_organizations)))
+        self.metric_values["checked"].setText(str(len({item["url"] for item in history})))
+        self.metric_values["runs"].setText(str(len(history)))
+        ai_state = public_state()
+        self.metric_values["ai"].setText(
+            ai_state["provider"].replace("gigachat", "GigaChat").upper()
+            if ai_state["enabled"] else "НЕ НАСТРОЕН"
+        )
 
     def refresh_history(self):
         rows = storage.list_history(self.db_path)
@@ -362,6 +479,24 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Gosweb Audit", "Внешние источники сохранены.")
         except Exception as exc:
             QMessageBox.critical(self, "Ошибка настройки источников", str(exc))
+
+    def configure_ai(self):
+        dialog = AISettingsDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        try:
+            dialog.save_settings()
+            state = public_state()
+            self.ai_state_label.setText(state["label"])
+            self.ai_details.setHtml(
+                "<h3>Настройки сохранены на этом компьютере.</h3>"
+                "<p>Ключ хранится в локальном .env. Проверьте соединение, чтобы убедиться, "
+                "что выбранная модель доступна.</p>"
+            )
+            self.refresh_registry()
+            self.status.setText("Настройки ИИ обновлены.")
+        except (OSError, ValueError) as exc:
+            QMessageBox.critical(self, "Не удалось сохранить настройки ИИ", str(exc))
 
     def check_ai_connection(self):
         if getattr(self, "ai_worker", None) and self.ai_worker.isRunning():
@@ -488,7 +623,7 @@ class MainWindow(QMainWindow):
         proof = []
         for evidence in item.get("evidence", []):
             proof.append(
-                f'<div style="padding:10px;background:#f1f5f9;margin:8px 0">'
+                f'<div style="padding:12px;background:#17243a;border:1px solid #2a3c58;border-radius:10px;margin:10px 0">'
                 f'<a href="{html.escape(evidence.get("url",""), quote=True)}">{html.escape(evidence.get("title") or evidence.get("url",""))}</a>'
                 f'<p>{html.escape(evidence.get("snippet",""))}</p>'
                 f'<small>HTTP {html.escape(str(evidence.get("status_code","—")))}</small></div>'
