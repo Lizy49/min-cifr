@@ -376,3 +376,13 @@ def test_alice_reports_non_completed_responses_safely(monkeypatch, status, detai
     assert result["status"] == "failed"
     assert expected in result["message"]
     assert "test-key" not in result["message"]
+
+
+def test_alice_is_default_provider_without_saved_configuration(monkeypatch):
+    monkeypatch.delenv("AI_PROVIDER", raising=False)
+    monkeypatch.delenv("YANDEX_API_KEY", raising=False)
+    monkeypatch.delenv("YANDEX_FOLDER_ID", raising=False)
+    state = ai.public_state()
+    assert state["provider"] == "alice"
+    assert state["enabled"] is False
+    assert "Алиса AI" in state["label"]
