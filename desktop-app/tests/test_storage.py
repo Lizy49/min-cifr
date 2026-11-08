@@ -38,3 +38,24 @@ def test_run_round_trip_preserves_unicode_evidence(tmp_path):
     assert restored["organization"]["name"] == "Магаданская школа"
     assert restored["findings"][0]["evidence"][0]["snippet"] == "Русский текст"
     assert storage.list_history(db)[0]["id"] == run_id
+
+
+
+def test_reference_is_unique_per_kind_and_latest_report_can_be_loaded(tmp_path):
+    db = tmp_path / "audit.sqlite3"
+    source = tmp_path / "orgs.json"
+    source.write_text(json.dumps([
+        {"name": "Школа 1", "kind": "school", "url": "https://school1.example/"},
+        {"name": "Школа 2", "kind": "school", "url": "https://school2.example/"},
+        {"name": "Сад 1", "kind": "garden", "url": "https://garden.example/"},
+    ], ensure_ascii=False), encoding="utf-8")
+    storage.initialize(db)
+    storage.seed_organizations(db, source)
+    orgs = storage.list_organizations(db)
+    first, second, garden = orgs
+    storage.set_reference(first["id"], db)
+    storage.set_reference(second["id"], db)
+    assert storage.get_reference("school", db)["id"] == second["id"]
+    storage.set_reference(garden["id"], db)
+    assert storage.get_reference("garden", db)["id"] == garden["id"]
+    assert storage.get_reference("school", db)["id"] == second["id"]

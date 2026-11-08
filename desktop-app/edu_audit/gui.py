@@ -100,6 +100,9 @@ class MainWindow(QMainWindow):
         layout.addLayout(filters)
 
         actions = QHBoxLayout()
+        self.set_reference_button = QPushButton("Назначить эталоном")
+        self.set_reference_button.clicked.connect(self.set_reference)
+        actions.addWidget(self.set_reference_button)
         self.check_selected_button = QPushButton("Проверить выбранное")
         self.check_all_button = QPushButton("Проверить весь список")
         self.export_html_button = QPushButton("Экспорт отчёта HTML")
@@ -127,12 +130,13 @@ class MainWindow(QMainWindow):
 
         registry_tab = QWidget()
         registry_layout = QVBoxLayout(registry_tab)
-        self.registry = QTableWidget(0, 4)
-        self.registry.setHorizontalHeaderLabels(["Учреждение", "Тип", "Сайт", "Последняя проверка"])
+        self.registry = QTableWidget(0, 5)
+        self.registry.setHorizontalHeaderLabels(["Учреждение", "Тип", "Сайт", "Эталон", "Последняя проверка"])
         self.registry.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.registry.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.registry.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.registry.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.registry.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         self.registry.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.registry.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.registry.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -205,7 +209,8 @@ class MainWindow(QMainWindow):
         for row, org in enumerate(organizations):
             values = [
                 org["name"], "Школа" if org["kind"] == "school" else "Детский сад",
-                org["url"], STATUS_LABELS.get(latest.get(org["url"], {}).get("status", ""), "Ещё не проверялся"),
+                org["url"], "Да" if org.get("is_reference") else "—",
+                STATUS_LABELS.get(latest.get(org["url"], {}).get("status", ""), "Ещё не проверялся"),
             ]
             for col, value in enumerate(values):
                 cell = QTableWidgetItem(str(value))
@@ -229,6 +234,19 @@ class MainWindow(QMainWindow):
     def _selected_organizations(self):
         rows = sorted({item.row() for item in self.registry.selectedItems()})
         return [self.registry.item(row, 0).data(Qt.ItemDataRole.UserRole) for row in rows]
+
+    def set_reference(self):
+        selected = self._selected_organizations()
+        if len(selected) != 1:
+            QMessageBox.information(self, "Gosweb Audit", "Выберите ровно одно учреждение, которое станет эталоном своего типа.")
+            return
+        try:
+            storage.set_reference(selected[0]["id"], self.db_path)
+            self.refresh_registry()
+            QMessageBox.information(self, "Gosweb Audit",
+                "Эталон назначен. Сравнение использует только названия найденных файлов и не заменяет нормативный перечень документов.")
+        except Exception as exc:
+            QMessageBox.critical(self, "Ошибка", str(exc))
 
     def check_selected(self):
         selected = self._selected_organizations()

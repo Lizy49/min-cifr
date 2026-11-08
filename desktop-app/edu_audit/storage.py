@@ -30,7 +30,8 @@ def initialize(db_path=None):
             kind TEXT NOT NULL CHECK(kind IN ('school','garden')),
             url TEXT NOT NULL UNIQUE,
             source TEXT NOT NULL DEFAULT '',
-            enabled INTEGER NOT NULL DEFAULT 1
+            enabled INTEGER NOT NULL DEFAULT 1,
+            is_reference INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,6 +47,11 @@ def initialize(db_path=None):
         CREATE INDEX IF NOT EXISTS ix_runs_org_id ON runs(org_id);
         CREATE INDEX IF NOT EXISTS ix_runs_created_at ON runs(created_at);
         """)
+        # Lightweight schema migration for databases created by an earlier desktop build.
+        with connect(db_path) as db:
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(organizations)")}
+            if "is_reference" not in columns:
+                db.execute("ALTER TABLE organizations ADD COLUMN is_reference INTEGER NOT NULL DEFAULT 0")
 
 
 def seed_organizations(db_path=None, json_path=None):
@@ -127,3 +133,31 @@ def load_run(run_id, db_path=None):
     report["pages"] = json.loads(report.pop("pages_json"))
     report["meta"] = json.loads(report.pop("meta_json"))
     return report
+
+
+def set_reference(org_id, db_path=None):
+    """Select one reference site per institution kind."""
+    with connect(db_path) as db:
+        org = db.execute("SELECT id, kind FROM organizations WHERE id=? AND enabled=1", (org_id,)).fetchone()
+        if not org:
+            raise ValueError("Учреждение не найдено.")
+        db.execute("UPDATE organizations SET is_reference=0 WHERE kind=?", (org["kind"],))
+        db.execute("UPDATE organizations SET is_reference=1 WHERE id=?", (org_id,))
+
+
+def get_reference(kind, db_path=None):
+    with connect(db_path) as db:
+        row = db.execute(
+            "SELECT * FROM organizations WHERE kind=? AND is_reference=1 AND enabled=1 LIMIT 1",
+            (kind,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def latest_completed_run(org_id, db_path=None):
+    with connect(db_path) as db:
+        row = db.execute(
+            "SELECT id FROM runs WHERE org_id=? AND status='completed' ORDER BY id DESC LIMIT 1",
+            (org_id,),
+        ).fetchone()
+    return load_run(row["id"], db_path) if row else None

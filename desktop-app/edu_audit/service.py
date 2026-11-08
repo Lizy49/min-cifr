@@ -26,7 +26,35 @@ class AuditService:
         finally:
             crawler.close()
         findings = check(organization["kind"], crawl)
-        report = {
+        reference = storage.get_reference(organization["kind"], self.db_path)
+        if reference and reference["id"] != organization["id"]:
+            reference_run = storage.latest_completed_run(reference["id"], self.db_path)
+            if reference_run is None:
+                findings.append({
+                    "rule": "reference.documents", "section": "Сравнение с эталоном",
+                    "status": "unknown", "priority": "low",
+                    "title": "Эталонный сайт ещё не проверялся",
+                    "explanation": f"Выбрано учреждение «{reference['name']}» как эталон, но завершённого отчёта для него нет.",
+                    "recommendation": "Сначала выполните проверку эталонного учреждения.", "evidence": [],
+                })
+            else:
+                ref_files = {p.get("title", "").strip().casefold(): p for p in reference_run.get("pages", [])
+                             if p.get("category") == "file" and p.get("status_code") == 200 and p.get("title")}
+                current_files = {p.get("title", "").strip().casefold(): p for p in crawl.get("pages", [])
+                                 if p.get("category") == "file" and p.get("status_code") == 200 and p.get("title")}
+                candidates = [p for name, p in ref_files.items() if name not in current_files]
+                if ref_files:
+                    findings.append({
+                        "rule": "reference.documents", "section": "Сравнение с эталоном",
+                        "status": "unknown", "priority": "low",
+                        "title": f"Кандидатов на сверку документов: {len(candidates)}",
+                        "explanation": f"В эталоне «{reference['name']}» найдено файлов: {len(ref_files)}; на проверяемом сайте: {len(current_files)}. Сравнение основано на именах файлов и ограниченном обходе; это не перечень обязательных документов и не доказательство отсутствия документа.",
+                        "recommendation": "Сверьте документы вручную: файлы могут иметь разные названия или находиться за пределами выборки.",
+                        "evidence": [{"url": p.get("url", ""), "title": p.get("title", ""),
+                                     "snippet": "Файл найден на эталонном сайте; сопоставьте его с документами проверяемого учреждения.",
+                                     "status_code": p.get("status_code", 200)} for p in candidates[:10]],
+                    })
+
             "organization": {
                 "id": organization["id"], "name": organization["name"],
                 "kind": organization["kind"], "url": organization["url"],
