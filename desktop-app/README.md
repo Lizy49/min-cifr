@@ -48,7 +48,7 @@ python -m pytest -q
 ```dotenv
 AI_PROVIDER=deepseek
 DEEPSEEK_API_KEY=вставь_сюда_свой_ключ
-DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_MODEL=deepseek-flash
 ```
 
 Ключ хранится только в локальном `.env`, не добавляй его в Git и не вставляй в исходный код. Запросы идут на официальный HTTPS endpoint `https://api.deepseek.com/chat/completions`; таймауты и ошибки авторизации/лимитов показываются в приложении.
