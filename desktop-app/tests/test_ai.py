@@ -103,6 +103,10 @@ def test_gemini_generate_content_uses_api_key_header_and_filters_urls(monkeypatc
         calls.append((url, kwargs))
         assert kwargs["headers"]["x-goog-api-key"] == "fake-gemini-key"
         assert kwargs["allow_redirects"] is False
+        assert kwargs["json"]["model"] == "deepseek-flash"
+        assert kwargs["json"]["thinking"] == {"type": "disabled"}
+        if len(calls) == 2:
+            assert kwargs["json"]["response_format"] == {"type": "json_object"}
         if "maxOutputTokens" in kwargs["json"].get("generationConfig", {}):
             payload = {"suggestions": [{
                 "title": "Сверить новость", "reason": "Есть расхождение.",
@@ -138,7 +142,7 @@ def test_gemini_http_errors_are_readable(monkeypatch, status):
 def test_deepseek_connection_and_analysis_use_chat_completions(monkeypatch):
     monkeypatch.setenv("AI_PROVIDER", "deepseek")
     monkeypatch.setenv("DEEPSEEK_API_KEY", "test-deepseek-key")
-    monkeypatch.setenv("DEEPSEEK_MODEL", "deepseek-chat")
+    monkeypatch.setenv("DEEPSEEK_MODEL", "deepseek-flash")
     calls = []
 
     def post(self, url, **kwargs):
