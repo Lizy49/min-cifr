@@ -615,29 +615,33 @@ class MainWindow(QMainWindow):
 
     def _render_specification(self, result):
         cards = [
-                f"<h2>{html.escape(result['source_name'])}</h2>",
-                f"<p><b>Найдено пунктов:</b> {result['total']} · "
-                f"<b>Распознано структурно:</b> {result['structured']} · "
-                f"<b>Нужна ручная классификация:</b> {result['manual']}</p>",
-                f"<p>{html.escape(result['note'])}</p>",
-                "<hr>",
-            ]
-            for item in result["requirements"]:
-                threshold = ", ".join(
-                    f"{html.escape(key)} = {html.escape(str(value))}"
-                    for key, value in item["threshold"].items()
-                ) or "порог не определён"
-                mode = "Распознано, требуется подтверждение" if item["verification"] != "manual" else "Ручная классификация"
-                cards.append(
-                    f"<section><h3>{html.escape(item['id'])} · {html.escape(item['category'])}</h3>"
-                    f"<p>{html.escape(item['text'])}</p>"
-                    f"<p><b>Тип проверки:</b> {html.escape(item['verification'])} · "
-                    f"<b>Статус:</b> {mode}</p><p><b>Параметры:</b> {threshold}</p></section><hr>"
-                )
-            cards.append(
-                "<p><b>Ограничение текущей версии:</b> импортированный черновик пока не заменяет "
-                "встроенные правила проверки. Подтвердите критерии и сверяйте выводы с доказательствами.</p>"
+            f"<h2>{html.escape(result['source_name'])}</h2>",
+            f"<p><b>Найдено пунктов:</b> {result['total']} · "
+            f"<b>Распознано структурно:</b> {result['structured']} · "
+            f"<b>Нужна ручная классификация:</b> {result['manual']}</p>",
+            f"<p>{html.escape(result['note'])}</p>",
+            "<hr>",
+        ]
+        for item in result["requirements"]:
+            threshold = ", ".join(
+                f"{html.escape(key)} = {html.escape(str(value))}"
+                for key, value in item["threshold"].items()
+            ) or "порог не определён"
+            mode = (
+                "Распознано, требуется подтверждение"
+                if item["verification"] != "manual" else "Ручная классификация"
             )
+            cards.append(
+                f"<section><h3>{html.escape(item['id'])} · {html.escape(item['category'])}</h3>"
+                f"<p>{html.escape(item['text'])}</p>"
+                f"<p><b>Тип проверки:</b> {html.escape(item['verification'])} · "
+                f"<b>Статус:</b> {mode}</p><p><b>Параметры:</b> {threshold}</p></section><hr>"
+            )
+        cards.append(
+            "<p><b>Ограничение текущей версии:</b> импортированный черновик не заменяет "
+            "встроенные правила проверки. Пункты попадут в отчёт как требующие ручной проверки, "
+            "а ИИ получит их как дополнительный контекст. Они не считаются доказанными нарушениями.</p>"
+        )
         self.spec_details.setHtml("".join(cards))
 
     def set_reference(self):
