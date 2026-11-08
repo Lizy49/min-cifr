@@ -12,8 +12,9 @@ from . import storage
 
 
 class AuditService:
-    def __init__(self, db_path=None, crawler_options=None):
+    def __init__(self, db_path=None, crawler_options=None, specification=None):
         self.db_path = Path(db_path or storage.DEFAULT_DB)
+        self.specification = specification or None
         self.crawler_options = crawler_options or {
             "max_pages": int(os.getenv("CRAWL_MAX_PAGES", "40")),
             "max_documents": int(os.getenv("CRAWL_MAX_DOCUMENTS", "8")),
@@ -35,6 +36,28 @@ class AuditService:
             crawler.close()
             raise
         findings = check(organization["kind"], crawl)
+        imported_requirements = (self.specification or {}).get("requirements", [])
+        for requirement in imported_requirements[:80]:
+            if not isinstance(requirement, dict):
+                continue
+            text = str(requirement.get("text", "")).strip()
+            if not text:
+                continue
+            findings.append({
+                "rule": "specification." + str(requirement.get("id", "manual")),
+                "section": "ТЗ · " + str(requirement.get("category", "general")),
+                "status": "unknown", "priority": "medium",
+                "title": "Требует подтверждения: " + text[:150],
+                "explanation": (
+                    "Пункт извлечён из импортированного технического задания. "
+                    "Автоматическая проверка этого требования ещё не настроена; "
+                    "отсутствие подтверждения не является нарушением. "
+                    "Тип распознавания: " + str(requirement.get("verification", "manual")) +
+                    "; параметры: " + str(requirement.get("threshold", {}))
+                ),
+                "recommendation": "Подтвердите формулировку, определите проверяемые данные и проверьте сайт вручную.",
+                "evidence": [],
+            })
         external_sources, external_errors = [], []
         for source_url in organization.get("fact_sources", [])[:5]:
             try:
@@ -58,6 +81,7 @@ class AuditService:
         ai_result = analyze_with_ai(
             crawl["pages"], findings, external_sources,
             reference=reference_context, organization_kind=organization["kind"],
+            requirements=imported_requirements,
         )
         if reference and reference["id"] != organization["id"]:
             if reference_run is None:
@@ -100,6 +124,12 @@ class AuditService:
                 "limited": crawl["limited"], "remaining": crawl["remaining"],
                 "issues": crawl["issues"], "complete": crawl["complete"],
                 "rules_version": "0.1.0",
+                "specification": {
+                    "source_name": (self.specification or {}).get("source_name", ""),
+                    "total": len(imported_requirements),
+                    "structured": (self.specification or {}).get("structured", 0),
+                    "manual": (self.specification or {}).get("manual", 0),
+                } if self.specification else None,
                 "ai": ai_result,
                 "external_sources": [p.get("url", "") for p in external_sources],
                 "external_errors": external_errors,
