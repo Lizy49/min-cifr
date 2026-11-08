@@ -103,10 +103,6 @@ def test_gemini_generate_content_uses_api_key_header_and_filters_urls(monkeypatc
         calls.append((url, kwargs))
         assert kwargs["headers"]["x-goog-api-key"] == "fake-gemini-key"
         assert kwargs["allow_redirects"] is False
-        assert kwargs["json"]["model"] == "deepseek-flash"
-        assert kwargs["json"]["thinking"] == {"type": "disabled"}
-        if len(calls) == 2:
-            assert kwargs["json"]["response_format"] == {"type": "json_object"}
         if "maxOutputTokens" in kwargs["json"].get("generationConfig", {}):
             payload = {"suggestions": [{
                 "title": "Сверить новость", "reason": "Есть расхождение.",
