@@ -160,9 +160,35 @@ class MainWindow(QMainWindow):
     def _build_ui(self):
         root = QWidget()
         self.setCentralWidget(root)
-        layout = QVBoxLayout(root)
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(14)
+        shell = QHBoxLayout(root)
+        shell.setContentsMargins(0, 0, 0, 0)
+        shell.setSpacing(0)
+
+        sidebar = QFrame()
+        sidebar.setObjectName("Sidebar")
+        sidebar.setFixedWidth(224)
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(18, 24, 18, 20)
+        sidebar_layout.setSpacing(10)
+
+        brand = QLabel("◈  GOSWEB")
+        brand.setObjectName("Brand")
+        brand_subtitle = QLabel("AUDIT PLATFORM")
+        brand_subtitle.setObjectName("BrandSubtitle")
+        sidebar_layout.addWidget(brand)
+        sidebar_layout.addWidget(brand_subtitle)
+        sidebar_layout.addSpacing(28)
+        nav_caption = QLabel("РАБОЧЕЕ ПРОСТРАНСТВО")
+        nav_caption.setObjectName("NavCaption")
+        sidebar_layout.addWidget(nav_caption)
+
+        content = QWidget()
+        content.setObjectName("MainContent")
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(28, 24, 28, 22)
+        layout.setSpacing(16)
+        shell.addWidget(sidebar)
+        shell.addWidget(content, 1)
 
         heading = QHBoxLayout()
         title_box = QVBoxLayout()
@@ -339,6 +365,30 @@ class MainWindow(QMainWindow):
         ai_layout.addLayout(ai_actions)
         ai_layout.addWidget(self.ai_details, 1)
         self.tabs.addTab(ai_tab, "ИИ-анализ")
+        self.tabs.tabBar().hide()
+
+        self.nav_buttons = []
+        for label, index in (
+            ("▦   Реестр учреждений", 0),
+            ("◉   Результаты проверки", 1),
+            ("◷   История аудитов", 2),
+            ("✧   ИИ-анализ", 3),
+        ):
+            button = QPushButton(label)
+            button.setObjectName("NavButton")
+            button.setCheckable(True)
+            button.clicked.connect(lambda checked=False, tab=index: self.tabs.setCurrentIndex(tab))
+            sidebar_layout.addWidget(button)
+            self.nav_buttons.append(button)
+        self.nav_buttons[0].setChecked(True)
+        self.tabs.currentChanged.connect(
+            lambda index: [button.setChecked(i == index) for i, button in enumerate(self.nav_buttons)]
+        )
+        sidebar_layout.addStretch(1)
+        sidebar_note = QLabel("ЛОКАЛЬНАЯ БАЗА\nSQLite · данные на этом ПК")
+        sidebar_note.setObjectName("SidebarNote")
+        sidebar_note.setWordWrap(True)
+        sidebar_layout.addWidget(sidebar_note)
 
         self.findings.itemSelectionChanged.connect(self.show_finding_details)
         self.setStyleSheet("""
@@ -346,8 +396,36 @@ class MainWindow(QMainWindow):
                 background: #0b1020; color: #e8edf7;
                 font-family: "Inter", "Segoe UI", "Arial"; font-size: 13px;
             }
+            QWidget#MainContent { background: #0b1020; }
+            QFrame#Sidebar {
+                background: #0d1525; border-right: 1px solid #1d2b43;
+            }
+            QLabel#Brand { color: #f4f7ff; font-size: 21px; font-weight: 900; letter-spacing: 1px; }
+            QLabel#BrandSubtitle {
+                color: #6f84a7; font-size: 9px; font-weight: 800; letter-spacing: 2px;
+                padding-left: 29px;
+            }
+            QLabel#NavCaption {
+                color: #657896; font-size: 9px; font-weight: 800; letter-spacing: 1.2px;
+                padding: 4px 8px;
+            }
+            QPushButton#NavButton {
+                text-align: left; color: #93a3bd; background: transparent;
+                border: 1px solid transparent; border-radius: 9px;
+                padding: 13px 11px; font-weight: 650;
+            }
+            QPushButton#NavButton:hover {
+                color: #e6edfb; background: #17243a; border-color: #263954;
+            }
+            QPushButton#NavButton:checked {
+                color: #a7f0df; background: #142d35; border: 1px solid #24534f;
+            }
+            QLabel#SidebarNote {
+                color: #667995; background: #111d30; border: 1px solid #1d2d45;
+                border-radius: 9px; padding: 12px; font-size: 10px; line-height: 1.5;
+            }
             QWidget#qt_scrollarea_viewport { background: #11182a; }
-            QLabel#Title { color: #f7f9ff; font-size: 29px; font-weight: 800; letter-spacing: 2px; }
+            QLabel#Title { color: #f7f9ff; font-size: 27px; font-weight: 850; letter-spacing: 1px; }
             QLabel#Subtitle { color: #8c9ab5; font-size: 13px; }
             QLabel#Counter {
                 color: #8ce6d0; background: #102b32; border: 1px solid #1c5b59;
