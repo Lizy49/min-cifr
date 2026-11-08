@@ -56,7 +56,8 @@ class AuditService:
         if progress:
             progress("Выполняется ИИ-анализ и сравнение с эталоном…")
         ai_result = analyze_with_ai(
-            crawl["pages"], findings, external_sources, reference=reference_context
+            crawl["pages"], findings, external_sources,
+            reference=reference_context, organization_kind=organization["kind"],
         )
         if reference and reference["id"] != organization["id"]:
             if reference_run is None:
