@@ -65,25 +65,7 @@ def check(kind, crawl, now=None):
         add("availability", "Доступность", "unknown", "Не удалось получить содержимое сайта",
             "; ".join(crawl.get("issues", [])[:3]) or "Нет доступных HTML-страниц.",
             "Проверьте адрес и доступность сайта, затем повторите проверку.", priority="high")
-        # The Gosweb content-quality materials also ask for a visual check of banners,
-    # logos and photos. Static HTML metadata is only a signal; image appearance and
-    # dimensions still require a person to inspect the page.
-    homepage = next((p for p in html if p.get("url") == crawl.get("start_url")), html[0])
-    images = homepage.get("details", {}).get("images", [])
-    if images:
-        missing_alt = [image for image in images if not (image.get("alt") or "").strip()]
-        add("quality.homepage_images", "Главная страница", "unknown",
-            "Изображения требуют визуальной проверки",
-            f"Найдено изображений: {len(images)}; без альтернативного описания: {len(missing_alt)}. Размер, чёткость логотипа, соответствие баннера и качество фотографии не подтверждаются HTML-проверкой.",
-            "Проверьте логотип, баннер, фотографии и их читаемость непосредственно в браузере.",
-            [_evidence(homepage, image.get("url", "")) for image in images[:5]], "low")
-    else:
-        add("quality.homepage_images", "Главная страница", "unknown",
-            "Не удалось распознать изображения главной страницы",
-            "Логотип или баннер могут быть оформлены фоновым изображением или загружаться через JavaScript.",
-            "Откройте главную страницу в браузере и проверьте логотип и баннер.", [_evidence(homepage)], "low")
-
-    return results
+        return results
 
     add("availability", "Доступность", "pass", "Сайт отвечает",
         f"Получено HTML-страниц: {len(html)}.", proof=[_evidence(html[0])])
@@ -262,5 +244,24 @@ def check(kind, crawl, now=None):
         "Исправьте или замените ссылки на недоступные документы." if broken_files else
         ("Повторите проверку файлов, доступ к которым ограничен." if uncertain_files else ""),
         [_evidence(p) for p in (broken_files or uncertain_files or files)[:8]], "high")
+
+    # The Gosweb content-quality materials also ask for a visual check of banners,
+    # logos and photos. Static HTML metadata is only a signal; appearance and
+    # dimensions still require a person to inspect the page.
+    homepage = next((p for p in html if p.get("url") == crawl.get("start_url")), html[0])
+    images = homepage.get("details", {}).get("images", [])
+    if images:
+        missing_alt = [image for image in images if not (image.get("alt") or "").strip()]
+        add("quality.homepage_images", "Главная страница", "unknown",
+            "Изображения требуют визуальной проверки",
+            f"Найдено изображений: {len(images)}; без альтернативного описания: {len(missing_alt)}. Размер, чёткость логотипа, соответствие баннера и качество фотографии не подтверждаются HTML-проверкой.",
+            "Проверьте логотип, баннер, фотографии и их читаемость непосредственно в браузере.",
+            [_evidence(homepage, image.get("url", "")) for image in images[:5]], "low")
+    else:
+        add("quality.homepage_images", "Главная страница", "unknown",
+            "Не удалось распознать изображения главной страницы",
+            "Логотип или баннер могут быть оформлены фоновым изображением или загружаться через JavaScript.",
+            "Откройте главную страницу в браузере и проверьте логотип и баннер.",
+            [_evidence(homepage)], "low")
 
     return results
