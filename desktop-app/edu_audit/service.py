@@ -24,8 +24,9 @@ class AuditService:
         crawler = Crawler(**self.crawler_options)
         try:
             crawl = crawler.crawl(organization["url"], progress=progress)
-        finally:
+        except Exception:
             crawler.close()
+            raise
         findings = check(organization["kind"], crawl)
         external_sources, external_errors = [], []
         for source_url in organization.get("fact_sources", [])[:5]:
@@ -33,6 +34,7 @@ class AuditService:
                 external_sources.append(crawler.fetch_external_source(source_url))
             except Exception as exc:
                 external_errors.append(f"{source_url}: {str(exc)[:250]}")
+        crawler.close()
         ai_result = analyze_with_ai(crawl["pages"], findings, external_sources)
         reference = storage.get_reference(organization["kind"], self.db_path)
         if reference and reference["id"] != organization["id"]:

@@ -82,3 +82,30 @@ def test_initialize_migrates_database_without_reference_column(tmp_path):
     with sqlite3.connect(db) as connection:
         columns = {row[1] for row in connection.execute("PRAGMA table_info(organizations)")}
     assert "is_reference" in columns
+
+
+
+def test_fact_sources_are_persisted_and_limited_to_five(tmp_path):
+    db = tmp_path / "audit.sqlite3"
+    source = tmp_path / "orgs.json"
+    source.write_text(json.dumps([
+        {"name": "Школа", "kind": "school", "url": "https://school.example/"},
+    ], ensure_ascii=False), encoding="utf-8")
+    storage.initialize(db)
+    storage.seed_organizations(db, source)
+    org = storage.list_organizations(db)[0]
+    storage.set_fact_sources(org["id"], [
+        "https://regional.example/news/",
+        "https://ministry.example/press/",
+    ], db)
+    restored = storage.list_organizations(db)[0]
+    assert restored["fact_sources"] == [
+        "https://regional.example/news/",
+        "https://ministry.example/press/",
+    ]
+    import pytest
+    with pytest.raises(ValueError):
+        storage.set_fact_sources(org["id"], [
+            "https://one.example", "https://two.example", "https://three.example",
+            "https://four.example", "https://five.example", "https://six.example",
+        ], db)
