@@ -109,3 +109,12 @@ def test_fact_sources_are_persisted_and_limited_to_five(tmp_path):
             "https://one.example", "https://two.example", "https://three.example",
             "https://four.example", "https://five.example", "https://six.example",
         ], db)
+
+
+
+def test_application_settings_round_trip(tmp_path):
+    storage.initialize(tmp_path / "settings.sqlite3")
+    value = {"source_name": "requirements.docx", "requirements": [{"id": "REQ-001"}]}
+    storage.set_setting("active_specification", value, tmp_path / "settings.sqlite3")
+    assert storage.get_setting("active_specification", tmp_path / "settings.sqlite3") == value
+    assert storage.get_setting("missing", tmp_path / "settings.sqlite3") is None
