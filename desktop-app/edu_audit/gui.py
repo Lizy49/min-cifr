@@ -7,7 +7,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv, set_key, unset_key
 
-from PyQt6.QtCore import QThread, pyqtSignal, Qt
+from PyQt6.QtCore import QThread, pyqtSignal, Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
     QCheckBox, QFrame, QHBoxLayout, QHeaderView, QLabel, QInputDialog, QLineEdit, QMainWindow,
@@ -213,7 +213,11 @@ class MainWindow(QMainWindow):
         self.speed_preset.addItem("Быстро · 30 страниц", "fast")
         self.speed_preset.addItem("Баланс · 60 страниц", "balanced")
         self.speed_preset.addItem("Глубоко · 120 страниц", "deep")
-        self.search.textChanged.connect(self.refresh_registry)
+        self.search_timer = QTimer(self)
+        self.search_timer.setSingleShot(True)
+        self.search_timer.setInterval(250)
+        self.search_timer.timeout.connect(self.refresh_registry)
+        self.search.textChanged.connect(lambda _text: self.search_timer.start())
         filters.addWidget(self.kind_filter)
         filters.addWidget(self.search, 1)
         filters.addWidget(QLabel("Режим:"))
@@ -431,6 +435,7 @@ class MainWindow(QMainWindow):
         latest = {}
         for item in history:
             latest.setdefault(item["url"], item)
+        self.registry.setUpdatesEnabled(False)
         self.registry.setRowCount(len(organizations))
         for row, org in enumerate(organizations):
             values = [
@@ -443,6 +448,7 @@ class MainWindow(QMainWindow):
                 if col == 0:
                     cell.setData(Qt.ItemDataRole.UserRole, org)
                 self.registry.setItem(row, col, cell)
+        self.registry.setUpdatesEnabled(True)
         self.counter.setText(f"{len(organizations)} учреждений")
         all_organizations = storage.list_organizations(self.db_path)
         self.metric_values["organizations"].setText(str(len(all_organizations)))
@@ -456,6 +462,7 @@ class MainWindow(QMainWindow):
 
     def refresh_history(self):
         rows = storage.list_history(self.db_path)
+        self.history.setUpdatesEnabled(False)
         self.history.setRowCount(len(rows))
         for row, item in enumerate(rows):
             values = [item["id"], item["name"], "Школа" if item["kind"] == "school" else "Детский сад",
@@ -465,6 +472,7 @@ class MainWindow(QMainWindow):
                 if col == 0:
                     cell.setData(Qt.ItemDataRole.UserRole, item["id"])
                 self.history.setItem(row, col, cell)
+        self.history.setUpdatesEnabled(True)
 
     def _selected_organizations(self):
         rows = sorted({item.row() for item in self.registry.selectedItems()})
