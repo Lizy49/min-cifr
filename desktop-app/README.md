@@ -72,7 +72,7 @@ YANDEX_FOLDER_ID=
 Смысловые замечания видны во вкладке «ИИ-анализ» и HTML-отчёте как подсказки для ручной сверки.
 Один запуск проверки учреждения делает один запрос к модели. При ошибке API отчёт по правилам сохраняется.
 Запросы к Алисе могут расходовать баланс Yandex Cloud. Ключ из `.env` не публикуйте.
-Используется модель `aliceai-llm/latest` через Responses API. Если Yandex Cloud возвращает HTTP 403,
+Используется официальная модель `aliceai-llm` через Responses API. Если Yandex Cloud возвращает HTTP 403,
 сверьте ID каталога с каталогом сервисного аккаунта. Проверьте роли `ai.languageModels.user`
 и `ai.assistants.editor` на этом каталоге и область действия ключа `yc.ai.foundationModels.execute`.
 Подробности в [документации по доступу к API](https://aistudio.yandex.ru/ru/docs/ai-studio/api-ref/authentication).
