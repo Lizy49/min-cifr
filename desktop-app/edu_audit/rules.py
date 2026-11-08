@@ -65,7 +65,25 @@ def check(kind, crawl, now=None):
         add("availability", "Доступность", "unknown", "Не удалось получить содержимое сайта",
             "; ".join(crawl.get("issues", [])[:3]) or "Нет доступных HTML-страниц.",
             "Проверьте адрес и доступность сайта, затем повторите проверку.", priority="high")
-        return results
+        # The Gosweb content-quality materials also ask for a visual check of banners,
+    # logos and photos. Static HTML metadata is only a signal; image appearance and
+    # dimensions still require a person to inspect the page.
+    homepage = next((p for p in html if p.get("url") == crawl.get("start_url")), html[0])
+    images = homepage.get("details", {}).get("images", [])
+    if images:
+        missing_alt = [image for image in images if not (image.get("alt") or "").strip()]
+        add("quality.homepage_images", "Главная страница", "unknown",
+            "Изображения требуют визуальной проверки",
+            f"Найдено изображений: {len(images)}; без альтернативного описания: {len(missing_alt)}. Размер, чёткость логотипа, соответствие баннера и качество фотографии не подтверждаются HTML-проверкой.",
+            "Проверьте логотип, баннер, фотографии и их читаемость непосредственно в браузере.",
+            [_evidence(homepage, image.get("url", "")) for image in images[:5]], "low")
+    else:
+        add("quality.homepage_images", "Главная страница", "unknown",
+            "Не удалось распознать изображения главной страницы",
+            "Логотип или баннер могут быть оформлены фоновым изображением или загружаться через JavaScript.",
+            "Откройте главную страницу в браузере и проверьте логотип и баннер.", [_evidence(homepage)], "low")
+
+    return results
 
     add("availability", "Доступность", "pass", "Сайт отвечает",
         f"Получено HTML-страниц: {len(html)}.", proof=[_evidence(html[0])])
@@ -75,12 +93,19 @@ def check(kind, crawl, now=None):
             "Учитывайте неполный охват. Для окончательного вывода проверьте сайт вручную.")
 
     groups = {section: [p for p in html if p.get("category") == section] for section in REQUIRED[kind]}
+    # Events can be embedded in calendar pages whose URL is not named "events".
+    if "events" in groups:
+        groups["events"] = [p for p in html if p.get("category") == "events" or p.get("details", {}).get("event_dates")]
     for section in REQUIRED[kind]:
         found = groups[section]
         if section == "main":
-            found = [p for p in html if p.get("url") and p.get("category") in ("other", "about")]
-            if not found:
-                found = html[:1]
+            # For kindergartens the home page itself is required; another "about" page
+            # must not accidentally count as the homepage.
+            start_url = crawl.get("start_url", "")
+            found = [p for p in html if p.get("url") == start_url]
+            if not found and pages:
+                first_url = pages[0].get("url")
+                found = [p for p in html if p.get("url") == first_url]
         if not found:
             add("section." + section, SECTION_TITLES[section], "unknown", "Раздел не распознан",
                 "В проверенной выборке не найден раздел с ожидаемыми признаками. Он может называться иначе или находиться за пределами обхода.",
@@ -192,7 +217,6 @@ def check(kind, crawl, now=None):
 
     # Contact signals are not proof that the details are correct or current.
     contact_sources = groups["contacts"] or html[:1]
-    contact_text = " ".join(page.get("text", "") for page in contact_sources)
     checks = [
         ("email", r"[\w.+-]+@[\w.-]+\.[a-zа-я]{2,}", "Электронная почта"),
         ("phone", r"(?:\+7|8)[\s(.-]*\d{3,5}[\s)\d.-]{5,15}\d", "Телефон"),

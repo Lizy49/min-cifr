@@ -395,6 +395,7 @@ class Crawler:
             issues.append("Достигнут лимит времени обхода.")
             limited = True
         return {
+            "start_url": start_url,
             "pages": pages, "issues": issues[:100], "limited": limited,
             "remaining": len(queue), "document_limit": self.max_documents,
             "complete": not limited and not issues,

@@ -74,3 +74,36 @@ def test_every_finding_has_explanation_and_recommendation_key():
     report = check("garden", crawl([make_page("https://x.example/", "other")]))
     assert report
     assert all("explanation" in item and "recommendation" in item and "status" in item for item in report)
+
+
+
+def test_kindergarten_homepage_does_not_count_another_page_as_home():
+    page = make_page("https://x.example/about/", "about")
+    result = {item["rule"]: item for item in check(
+        "garden", {"start_url": "https://x.example/", **crawl([page])},
+        datetime(2026, 11, 8, tzinfo=TZ)
+    )}
+    assert result["section.main"]["status"] == "unknown"
+
+
+def test_events_are_checked_even_when_url_category_is_not_named_events():
+    page = make_page(
+        "https://x.example/calendar/",
+        "other",
+        event_dates=[{"value": "2026-11-12T10:00:00+11:00", "precision": "minute"}],
+    )
+    result = {item["rule"]: item for item in check(
+        "school", crawl([page]), datetime(2026, 11, 8, tzinfo=TZ)
+    )}
+    assert result["events.current"]["status"] == "pass"
+
+
+def test_homepage_visual_review_is_explicitly_unknown():
+    page = make_page("https://x.example/", "other")
+    page["details"]["images"] = [{"url": "https://x.example/logo.png", "alt": ""}]
+    result = {item["rule"]: item for item in check(
+        "school", {"start_url": "https://x.example/", **crawl([page])},
+        datetime(2026, 11, 8, tzinfo=TZ)
+    )}
+    assert result["quality.homepage_images"]["status"] == "unknown"
+    assert "визуальной" in result["quality.homepage_images"]["title"].lower()
