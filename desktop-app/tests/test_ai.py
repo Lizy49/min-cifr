@@ -150,6 +150,10 @@ def test_deepseek_connection_and_analysis_use_chat_completions(monkeypatch):
         assert url == "https://api.deepseek.com/chat/completions"
         assert kwargs["headers"]["Authorization"] == "Bearer test-deepseek-key"
         assert kwargs["allow_redirects"] is False
+        assert kwargs["json"]["model"] == "deepseek-flash"
+        assert kwargs["json"]["thinking"] == {"type": "disabled"}
+        if len(calls) == 2:
+            assert kwargs["json"]["response_format"] == {"type": "json_object"}
         if len(calls) == 1:
             content = "OK"
         else:
