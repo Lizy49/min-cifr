@@ -155,13 +155,15 @@ class MainWindow(QMainWindow):
         self.db_path = self.service.db_path
         self.worker = None
         self.current_report = None
-        self.specification = None
+        self.specification = storage.get_setting("active_specification", self.db_path)
         self.setWindowTitle("Gosweb Audit — аудит сайтов образования")
         self.resize(1480, 960)
         self.setMinimumSize(1080, 760)
         self._build_ui()
         self.refresh_registry()
         self.refresh_history()
+        if self.specification:
+            self._render_specification(self.specification)
 
     def _build_ui(self):
         root = QWidget()
@@ -601,7 +603,18 @@ class MainWindow(QMainWindow):
         try:
             result = parse_specification(path)
             self.specification = result
-            cards = [
+            storage.set_setting("active_specification", result, self.db_path)
+            self._render_specification(result)
+            self.status.setText(
+                f"ТЗ загружено: {result['total']} требований; "
+                f"{result['structured']} распознано, {result['manual']} требуют классификации."
+            )
+            self.tabs.setCurrentIndex(4)
+        except (OSError, ValueError, ImportError) as exc:
+            QMessageBox.critical(self, "Не удалось разобрать ТЗ", str(exc))
+
+    def _render_specification(self, result):
+        cards = [
                 f"<h2>{html.escape(result['source_name'])}</h2>",
                 f"<p><b>Найдено пунктов:</b> {result['total']} · "
                 f"<b>Распознано структурно:</b> {result['structured']} · "
@@ -625,14 +638,7 @@ class MainWindow(QMainWindow):
                 "<p><b>Ограничение текущей версии:</b> импортированный черновик пока не заменяет "
                 "встроенные правила проверки. Подтвердите критерии и сверяйте выводы с доказательствами.</p>"
             )
-            self.spec_details.setHtml("".join(cards))
-            self.status.setText(
-                f"ТЗ загружено: {result['total']} требований; "
-                f"{result['structured']} распознано, {result['manual']} требуют классификации."
-            )
-            self.tabs.setCurrentIndex(4)
-        except (OSError, ValueError, ImportError) as exc:
-            QMessageBox.critical(self, "Не удалось разобрать ТЗ", str(exc))
+        self.spec_details.setHtml("".join(cards))
 
     def set_reference(self):
         selected = self._selected_organizations()
