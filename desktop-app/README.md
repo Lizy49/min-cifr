@@ -13,7 +13,7 @@
 - Экспорт отчёта в HTML и CSV.
 - Выбор эталонного сайта отдельно для школы и детского сада; сравнение найденных названий файлов документов.
 - Настройка до пяти внешних URL для фактчекинга.
-- Необязательный анализ через Gemini, GigaChat или локальную модель Ollama; ИИ-выводы не становятся нарушениями автоматически.
+- Необязательный анализ через DeepSeek API, Gemini, GigaChat или локальную модель Ollama; ИИ-выводы не становятся нарушениями автоматически.
 - Три режима обхода: быстрый, сбалансированный и глубокий.
 - Интерфейс PyQt6, рассчитанный на Linux/Kubuntu.
 
@@ -41,16 +41,19 @@ python -m pip install pytest
 python -m pytest -q
 ```
 
-## Необязательное подключение ИИ
+## Подключение DeepSeek API
 
-Без ИИ работают все правила, реестр, история и отчёты. Чтобы подключить Gemini, откройте [Google AI Studio](https://aistudio.google.com/app/apikey), создайте API-ключ, затем скопируйте `.env.example` в `.env` и вставьте ключ в GEMINI_API_KEY. Ключ не добавляйте в Git.
+Без ИИ работают все правила, реестр, история и отчёты. Для подключения DeepSeek создай API-ключ в [личном кабинете DeepSeek](https://platform.deepseek.com/api_keys), затем скопируй `.env.example` в `.env` и заполни:
 
-Gemini (рекомендуемый быстрый вариант):
 ```dotenv
-AI_PROVIDER=gemini
-GEMINI_API_KEY=вставь_сюда_свой_ключ
-GEMINI_MODEL=gemini-3.5-flash-lite
+AI_PROVIDER=deepseek
+DEEPSEEK_API_KEY=вставь_сюда_свой_ключ
+DEEPSEEK_MODEL=deepseek-chat
 ```
+
+Ключ хранится только в локальном `.env`, не добавляй его в Git и не вставляй в исходный код. Запросы идут на официальный HTTPS endpoint `https://api.deepseek.com/chat/completions`; таймауты и ошибки авторизации/лимитов показываются в приложении.
+
+Другие провайдеры остаются доступными при смене `AI_PROVIDER`: Gemini, GigaChat и локальная Ollama. Для Gemini используй `GEMINI_API_KEY`, для GigaChat — `GIGACHAT_CREDENTIALS`, для Ollama — `OLLAMA_URL` и `OLLAMA_MODEL`.
 
 Локальный Ollama:
 ```dotenv
