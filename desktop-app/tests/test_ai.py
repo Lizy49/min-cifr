@@ -133,3 +133,50 @@ def test_gemini_http_errors_are_readable(monkeypatch, status):
     result = ai.test_connection()
     assert result["status"] == "failed"
     assert "Gemini" in result["message"]
+
+
+def test_deepseek_connection_and_analysis_use_chat_completions(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "deepseek")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-deepseek-key")
+    monkeypatch.setenv("DEEPSEEK_MODEL", "deepseek-chat")
+    calls = []
+
+    def post(self, url, **kwargs):
+        calls.append((url, kwargs))
+        assert url == "https://api.deepseek.com/chat/completions"
+        assert kwargs["headers"]["Authorization"] == "Bearer test-deepseek-key"
+        assert kwargs["allow_redirects"] is False
+        if len(calls) == 1:
+            content = "OK"
+        else:
+            content = json.dumps({"suggestions": [{
+                "title": "Проверить публикацию",
+                "reason": "Дата требует сверки.",
+                "recommendation": "Сопоставить с независимым источником.",
+                "urls": ["https://school.example/news/1", "https://fake.example/no"],
+            }]}, ensure_ascii=False)
+        return Reply({"choices": [{"message": {"content": content}}]})
+
+    monkeypatch.setattr(requests.Session, "post", post)
+    assert ai.public_state()["provider"] == "deepseek"
+    assert ai.test_connection()["status"] == "ok"
+    result = ai.analyze([{
+        "url": "https://school.example/news/1", "title": "Новость",
+        "text": "Текст", "category": "news", "details": {},
+    }], [], [])
+    assert result["status"] == "completed"
+    assert result["suggestions"][0]["urls"] == ["https://school.example/news/1"]
+    assert len(calls) == 2
+
+
+def test_deepseek_missing_key_does_not_make_network_request(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "deepseek")
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+
+    def fail(*args, **kwargs):
+        raise AssertionError("Network must not be used without DeepSeek API key")
+
+    monkeypatch.setattr(requests.Session, "post", fail)
+    assert ai.public_state()["enabled"] is False
+    assert ai.test_connection()["status"] == "not_configured"
+    assert ai.analyze([], [], [])["status"] == "disabled"
