@@ -37,15 +37,16 @@ def test_alice_reviews_required_sections_and_exports_grounded_suggestions(monkey
         assert kwargs["allow_redirects"] is False
         payload = kwargs["json"]
         assert payload["model"] == "gpt://test-folder/aliceai-llm"
-        assert payload["store"] is False
+        assert "store" not in payload
+        assert "instructions" not in payload
         assert "text" not in payload
         assert "max_output_tokens" in payload
         assert isinstance(payload["input"], str)
-        if "instructions" not in payload:
-            assert payload["input"] == "Ответь одним словом: OK."
+        if payload["input"] == "Ответь одним словом: OK.":
             return response("OK")
-        assert "JSON" in payload["instructions"]
-        context = json.loads(payload["input"])
+        guidance, serialized_context = payload["input"].split("\\n\\n", 1)
+        assert "JSON" in guidance
+        context = json.loads(serialized_context)
         assert any(page["url"] == source for page in context["site_pages"])
         assert len(context["rule_results"]) == len(findings)
         assert "Обязательный раздел: Расписание" in context["technical_specification_checklist"]["criteria"]
@@ -90,7 +91,7 @@ def test_alice_explains_403_without_exposing_key(monkeypatch):
     result = ai.test_connection()
     assert result["status"] == "failed"
     assert "HTTP 403" in result["message"]
-    assert "ai.assistants.editor" in result["message"]
+    assert "ai.languageModels.user" in result["message"]
     assert "yc.ai.foundationModels.execute" in result["message"]
     assert "test-secret" not in result["message"]
 
