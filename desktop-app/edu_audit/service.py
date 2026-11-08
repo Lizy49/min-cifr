@@ -42,10 +42,21 @@ class AuditService:
             except Exception as exc:
                 external_errors.append(f"{source_url}: {str(exc)[:250]}")
         crawler.close()
-        ai_result = analyze_with_ai(crawl["pages"], findings, external_sources)
         reference = storage.get_reference(organization["kind"], self.db_path)
+        reference_run = None
         if reference and reference["id"] != organization["id"]:
             reference_run = storage.latest_completed_run(reference["id"], self.db_path)
+        reference_context = None
+        if reference and reference["id"] != organization["id"] and reference_run:
+            reference_context = {
+                "name": reference["name"], "url": reference["url"],
+                "pages": reference_run.get("pages", []),
+                "findings": reference_run.get("findings", []),
+            }
+        ai_result = analyze_with_ai(
+            crawl["pages"], findings, external_sources, reference=reference_context
+        )
+        if reference and reference["id"] != organization["id"]:
             if reference_run is None:
                 findings.append({
                     "rule": "reference.documents", "section": "Сравнение с эталоном",
