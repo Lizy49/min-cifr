@@ -44,7 +44,7 @@ def test_alice_reviews_required_sections_and_exports_grounded_suggestions(monkey
         assert isinstance(payload["input"], str)
         if payload["input"] == "Ответь одним словом: OK.":
             return response("OK")
-        guidance, serialized_context = payload["input"].split("\\n\\n", 1)
+        guidance, serialized_context = payload["input"].split("\n\n", 1)
         assert "JSON" in guidance
         context = json.loads(serialized_context)
         assert any(page["url"] == source for page in context["site_pages"])
