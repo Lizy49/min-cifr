@@ -50,6 +50,8 @@ class AuditWorker(QThread):
         service = AuditService(self.db_path, crawler_options=self.crawler_options)
         try:
             for organization in self.organizations:
+                if self.isInterruptionRequested():
+                    break
                 self.progress.emit("Проверяется: " + organization["name"])
                 try:
                     report = service.audit(
@@ -219,6 +221,10 @@ class MainWindow(QMainWindow):
         actions.addWidget(self.fact_sources_button)
         self.check_selected_button = QPushButton("Проверить выбранное")
         self.check_all_button = QPushButton("Проверить весь список")
+        self.cancel_button = QPushButton("Остановить")
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.setToolTip("Остановить очередь после завершения текущего сайта")
+        self.cancel_button.clicked.connect(self.cancel_checks)
         self.check_selected_button.setObjectName("PrimaryButton")
         self.export_html_button = QPushButton("Экспорт отчёта HTML")
         self.export_csv_button = QPushButton("Экспорт отчёта CSV")
@@ -228,7 +234,7 @@ class MainWindow(QMainWindow):
         self.export_csv_button.clicked.connect(lambda: self.export_report("csv"))
         self.export_html_button.setEnabled(False)
         self.export_csv_button.setEnabled(False)
-        for button in (self.check_selected_button, self.check_all_button, self.export_html_button, self.export_csv_button):
+        for button in (self.check_selected_button, self.check_all_button, self.cancel_button, self.export_html_button, self.export_csv_button):
             actions.addWidget(button)
         layout.addLayout(actions)
 
@@ -552,6 +558,9 @@ class MainWindow(QMainWindow):
             return
         self.check_selected_button.setEnabled(False)
         self.check_all_button.setEnabled(False)
+        self.cancel_button.setEnabled(True)
+        self.cancel_button.setVisible(True)
+        self.cancel_requested = False
         self.progress.show()
         self.status.setText(f"В очереди учреждений: {len(organizations)}")
         preset = self.speed_preset.currentData()
@@ -567,11 +576,23 @@ class MainWindow(QMainWindow):
         self.worker.all_done.connect(self._checks_finished)
         self.worker.start()
 
+    def cancel_checks(self):
+        if self.worker and self.worker.isRunning():
+            self.cancel_requested = True
+            self.cancel_button.setEnabled(False)
+            self.status.setText("Остановка запрошена — завершается текущий сайт…")
+            self.worker.requestInterruption()
+
     def _checks_finished(self):
         self.progress.hide()
         self.check_selected_button.setEnabled(True)
         self.check_all_button.setEnabled(True)
-        self.status.setText("Проверка очереди завершена.")
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.setVisible(False)
+        self.status.setText(
+            "Очередь остановлена по запросу." if getattr(self, "cancel_requested", False)
+            else "Проверка очереди завершена."
+        )
         self.refresh_registry()
         self.refresh_history()
 
