@@ -184,3 +184,46 @@ def test_deepseek_missing_key_does_not_make_network_request(monkeypatch):
     assert ai.public_state()["enabled"] is False
     assert ai.test_connection()["status"] == "not_configured"
     assert ai.analyze([], [], [])["status"] == "disabled"
+
+
+
+def test_deepseek_analysis_compares_reference_site_and_keeps_reference_urls(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "deepseek")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-deepseek-key")
+    monkeypatch.setenv("DEEPSEEK_MODEL", "deepseek-flash")
+    seen = {}
+
+    def post(self, url, **kwargs):
+        payload = kwargs["json"]
+        user_payload = json.loads(payload["messages"][1]["content"])
+        seen.update(user_payload)
+        content = json.dumps({"suggestions": [{
+            "title": "Сверить структуру раздела",
+            "reason": "На эталоне найден дополнительный раздел.",
+            "recommendation": "Проверить, требуется ли аналогичный раздел по ТЗ.",
+            "urls": ["https://reference.example/about", "https://target.example/about"],
+        }]}, ensure_ascii=False)
+        return Reply({"choices": [{"message": {"content": content}}]})
+
+    monkeypatch.setattr(requests.Session, "post", post)
+    target = [{
+        "url": "https://target.example/about", "title": "О школе",
+        "text": "Сведения об учреждении", "category": "about", "details": {},
+    }]
+    reference = {
+        "name": "Эталонная школа", "url": "https://reference.example",
+        "pages": [{
+            "url": "https://reference.example/about", "title": "О школе",
+            "text": "Полные сведения", "category": "about", "status_code": 200,
+        }],
+        "findings": [{"rule": "section.about", "status": "pass", "title": "Раздел найден"}],
+    }
+
+    result = ai.analyze(target, [], [], reference=reference)
+
+    assert result["status"] == "completed"
+    assert seen["reference_site"]["organization"] == "Эталонная школа"
+    assert len(seen["reference_site"]["pages"]) == 1
+    assert result["suggestions"][0]["urls"] == [
+        "https://reference.example/about", "https://target.example/about"
+    ]
