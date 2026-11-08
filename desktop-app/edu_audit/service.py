@@ -54,7 +54,7 @@ class AuditService:
                                      "snippet": "Файл найден на эталонном сайте; сопоставьте его с документами проверяемого учреждения.",
                                      "status_code": p.get("status_code", 200)} for p in candidates[:10]],
                     })
-
+        report = {
             "organization": {
                 "id": organization["id"], "name": organization["name"],
                 "kind": organization["kind"], "url": organization["url"],

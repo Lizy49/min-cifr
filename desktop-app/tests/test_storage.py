@@ -51,11 +51,13 @@ def test_reference_is_unique_per_kind_and_latest_report_can_be_loaded(tmp_path):
     ], ensure_ascii=False), encoding="utf-8")
     storage.initialize(db)
     storage.seed_organizations(db, source)
-    orgs = storage.list_organizations(db)
-    first, second, garden = orgs
-    storage.set_reference(first["id"], db)
-    storage.set_reference(second["id"], db)
-    assert storage.get_reference("school", db)["id"] == second["id"]
+    orgs = {item["url"]: item for item in storage.list_organizations(db)}
+    school1 = orgs["https://school1.example/"]
+    school2 = orgs["https://school2.example/"]
+    garden = orgs["https://garden.example/"]
+    storage.set_reference(school1["id"], db)
+    storage.set_reference(school2["id"], db)
+    assert storage.get_reference("school", db)["id"] == school2["id"]
     storage.set_reference(garden["id"], db)
     assert storage.get_reference("garden", db)["id"] == garden["id"]
-    assert storage.get_reference("school", db)["id"] == second["id"]
+    assert storage.get_reference("school", db)["id"] == school2["id"]

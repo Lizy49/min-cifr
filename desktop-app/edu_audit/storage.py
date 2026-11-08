@@ -48,10 +48,9 @@ def initialize(db_path=None):
         CREATE INDEX IF NOT EXISTS ix_runs_created_at ON runs(created_at);
         """)
         # Lightweight schema migration for databases created by an earlier desktop build.
-        with connect(db_path) as db:
-            columns = {row["name"] for row in db.execute("PRAGMA table_info(organizations)")}
-            if "is_reference" not in columns:
-                db.execute("ALTER TABLE organizations ADD COLUMN is_reference INTEGER NOT NULL DEFAULT 0")
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(organizations)")}
+        if "is_reference" not in columns:
+            db.execute("ALTER TABLE organizations ADD COLUMN is_reference INTEGER NOT NULL DEFAULT 0")
 
 
 def seed_organizations(db_path=None, json_path=None):
