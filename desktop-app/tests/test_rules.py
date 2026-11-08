@@ -107,3 +107,12 @@ def test_homepage_visual_review_is_explicitly_unknown():
     )}
     assert result["quality.homepage_images"]["status"] == "unknown"
     assert "визуальной" in result["quality.homepage_images"]["title"].lower()
+    assert result["quality.homepage_profile"]["status"] == "unknown"
+    assert "300–400" in result["quality.homepage_profile"]["explanation"]
+
+
+def test_placeholder_guide_examples_are_reported_with_page_evidence():
+    page = make_page("https://x.example/about/", "about", text="Укажите цели и задачи учреждения. Заглушка.")
+    result = {item["rule"]: item for item in check("school", crawl([page]))}
+    assert result["quality.placeholders"]["status"] == "warning"
+    assert result["quality.placeholders"]["evidence"][0]["url"] == page["url"]

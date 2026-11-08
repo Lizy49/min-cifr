@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
 )
 
 from . import storage
-from .exporters import export_csv, export_html
+from .exporters import export_csv, export_html, export_summary_csv, export_summary_html
 from .service import AuditService
 from .ai import public_state, test_connection
 from .requirements_parser import parse_specification
@@ -276,13 +276,17 @@ class MainWindow(QMainWindow):
         self.check_selected_button.setObjectName("PrimaryButton")
         self.export_html_button = QPushButton("Экспорт отчёта HTML")
         self.export_csv_button = QPushButton("Экспорт отчёта CSV")
+        self.export_summary_button = QPushButton("Сводный рейтинг")
+        self.export_summary_button.setToolTip("Сохранить рейтинг по последним завершённым проверкам всех учреждений")
+        self.export_summary_button.clicked.connect(self.export_summary)
         self.check_selected_button.clicked.connect(self.check_selected)
         self.check_all_button.clicked.connect(self.check_all)
         self.export_html_button.clicked.connect(lambda: self.export_report("html"))
         self.export_csv_button.clicked.connect(lambda: self.export_report("csv"))
         self.export_html_button.setEnabled(False)
         self.export_csv_button.setEnabled(False)
-        for button in (self.check_selected_button, self.check_all_button, self.cancel_button, self.export_html_button, self.export_csv_button):
+        for button in (self.check_selected_button, self.check_all_button, self.cancel_button,
+                       self.export_html_button, self.export_csv_button, self.export_summary_button):
             actions.addWidget(button)
         layout.addLayout(actions)
 
@@ -577,6 +581,7 @@ class MainWindow(QMainWindow):
 
     def refresh_history(self):
         rows = storage.list_history(self.db_path)
+        self.export_summary_button.setEnabled(bool(storage.list_latest_reports(self.db_path)))
         self.history.setUpdatesEnabled(False)
         self.history.setRowCount(len(rows))
         for row, item in enumerate(rows):
@@ -874,6 +879,30 @@ class MainWindow(QMainWindow):
             else:
                 export_csv(self.current_report, path)
             QMessageBox.information(self, "Gosweb Audit", f"Отчёт сохранён:\n{path}")
+        except OSError as exc:
+            QMessageBox.critical(self, "Ошибка экспорта", str(exc))
+
+    def export_summary(self):
+        reports = storage.list_latest_reports(self.db_path)
+        if not reports:
+            QMessageBox.information(self, "Gosweb Audit", "Пока нет завершённых проверок для сводного рейтинга.")
+            return
+        path, selected_filter = QFileDialog.getSaveFileName(
+            self, "Сохранить сводный рейтинг", "gosweb-summary.html",
+            "HTML для просмотра и печати (*.html);;Таблица CSV (*.csv)",
+        )
+        if not path:
+            return
+        try:
+            if "CSV" in selected_filter or path.lower().endswith(".csv"):
+                if not path.lower().endswith(".csv"):
+                    path += ".csv"
+                export_summary_csv(reports, path)
+            else:
+                if not path.lower().endswith(".html"):
+                    path += ".html"
+                export_summary_html(reports, path)
+            QMessageBox.information(self, "Gosweb Audit", f"Сводный рейтинг сохранён:\n{path}")
         except OSError as exc:
             QMessageBox.critical(self, "Ошибка экспорта", str(exc))
 

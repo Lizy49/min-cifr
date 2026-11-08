@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
+import unicodedata
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -84,19 +86,26 @@ def list_organizations(db_path=None, kind=None, query=""):
     if kind in ("school", "garden"):
         sql += " AND kind=?"
         params.append(kind)
-    if query.strip():
-        sql += " AND name LIKE ? ESCAPE '\\'"
-        escaped = query.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        params.append("%" + escaped + "%")
     sql += " ORDER BY kind, name"
     with connect(db_path) as db:
         rows = [dict(row) for row in db.execute(sql, params).fetchall()]
+    normalized_query = _normalize_search(query)
+    if normalized_query:
+        tokens = normalized_query.split()
+        rows = [row for row in rows
+                if all(token in _normalize_search(row["name"]) for token in tokens)]
     for row in rows:
         try:
             row["fact_sources"] = json.loads(row.pop("fact_sources_json", "[]"))
         except (TypeError, ValueError):
             row["fact_sources"] = []
     return rows
+
+
+def _normalize_search(value):
+    """Normalize Russian text for literal, case-insensitive registry search."""
+    value = unicodedata.normalize("NFKC", str(value or "")).casefold().replace("ё", "е")
+    return re.sub(r"\s+", " ", value).strip()
 
 
 def save_run(report, db_path=None):
@@ -126,6 +135,20 @@ def list_history(db_path=None, limit=100):
             (limit,),
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+def list_latest_reports(db_path=None):
+    """Load the latest completed audit for each enabled organization."""
+    with connect(db_path) as db:
+        rows = db.execute(
+            """SELECT runs.id FROM runs
+               JOIN organizations ON organizations.id=runs.org_id
+               WHERE organizations.enabled=1 AND runs.status='completed'
+                 AND runs.id=(SELECT MAX(latest.id) FROM runs latest
+                              WHERE latest.org_id=runs.org_id AND latest.status='completed')
+               ORDER BY organizations.kind, organizations.name"""
+        ).fetchall()
+    return [load_run(row["id"], db_path) for row in rows]
 
 
 def load_run(run_id, db_path=None):

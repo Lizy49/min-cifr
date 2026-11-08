@@ -18,6 +18,28 @@ def test_seed_is_idempotent_and_filters_only_school_and_garden(tmp_path):
     assert len(storage.list_organizations(db, "school")) == 1
 
 
+def test_registry_search_is_russian_case_insensitive_and_normalized(tmp_path):
+    db = tmp_path / "search.sqlite3"
+    source = tmp_path / "orgs.json"
+    source.write_text(json.dumps([
+        {"name": "МБОУ Школа № 21 имени Ёлки", "kind": "school", "url": "https://school.example/"},
+        {"name": "Детский сад Ромашка", "kind": "garden", "url": "https://garden.example/"},
+    ], ensure_ascii=False), encoding="utf-8")
+    storage.initialize(db)
+    storage.seed_organizations(db, source)
+
+    assert [row["name"] for row in storage.list_organizations(db, query="школа № 21")] == [
+        "МБОУ Школа № 21 имени Ёлки"
+    ]
+    assert [row["name"] for row in storage.list_organizations(db, query="ЕЛКИ")] == [
+        "МБОУ Школа № 21 имени Ёлки"
+    ]
+    assert [row["name"] for row in storage.list_organizations(db, query="РОМАШКА")] == [
+        "Детский сад Ромашка"
+    ]
+    assert storage.list_organizations(db, query="%_") == []
+
+
 def test_run_round_trip_preserves_unicode_evidence(tmp_path):
     db = tmp_path / "audit.sqlite3"
     source = tmp_path / "orgs.json"
@@ -61,6 +83,27 @@ def test_reference_is_unique_per_kind_and_latest_report_can_be_loaded(tmp_path):
     storage.set_reference(garden["id"], db)
     assert storage.get_reference("garden", db)["id"] == garden["id"]
     assert storage.get_reference("school", db)["id"] == school2["id"]
+
+
+def test_latest_reports_returns_only_latest_completed_run_per_organization(tmp_path):
+    db = tmp_path / "latest.sqlite3"
+    source = tmp_path / "orgs.json"
+    source.write_text(json.dumps([
+        {"name": "Школа", "kind": "school", "url": "https://school.example/"},
+        {"name": "Детский сад", "kind": "garden", "url": "https://garden.example/"},
+    ], ensure_ascii=False), encoding="utf-8")
+    storage.initialize(db)
+    storage.seed_organizations(db, source)
+    organizations = storage.list_organizations(db)
+    for org, status, stamp in ((organizations[0], "completed", "2026-11-07"),
+                               (organizations[0], "failed", "2026-11-08"),
+                               (organizations[1], "completed", "2026-11-08")):
+        storage.save_run({"organization": org, "status": status, "created_at": stamp,
+                          "findings": [], "pages": [], "meta": {}}, db)
+    latest = storage.list_latest_reports(db)
+    assert len(latest) == 2
+    assert {report["organization"]["name"] for report in latest} == {"Школа", "Детский сад"}
+    assert all(report["status"] == "completed" for report in latest)
 
 
 

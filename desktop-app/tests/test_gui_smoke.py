@@ -45,7 +45,8 @@ def test_ai_settings_dialog_saves_deepseek_key_only_to_local_env(tmp_path, monke
     assert "DEEPSEEK_API_KEY='test-secret-key'" in contents
     assert public_state()["provider"] == "deepseek"
     assert public_state()["enabled"] is True
-    assert dialog.env_path.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert dialog.env_path.stat().st_mode & 0o777 == 0o600
     dialog.close()
     app.processEvents()
 
