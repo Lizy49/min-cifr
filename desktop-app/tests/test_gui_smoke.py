@@ -31,7 +31,7 @@ def test_ai_settings_dialog_saves_deepseek_key_only_to_local_env(tmp_path, monke
     dialog.env_path = tmp_path / ".env"
     dialog.provider.setCurrentText("DeepSeek")
     dialog.key.setText("test-secret-key")
-    dialog.model.setText("deepseek-chat")
+    dialog.model.setText("deepseek-flash")
     dialog.save_settings()
 
     assert dialog.env_path.exists()
