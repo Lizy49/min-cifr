@@ -53,6 +53,8 @@ class AuditService:
                 "pages": reference_run.get("pages", []),
                 "findings": reference_run.get("findings", []),
             }
+        if progress:
+            progress("Выполняется ИИ-анализ и сравнение с эталоном…")
         ai_result = analyze_with_ai(
             crawl["pages"], findings, external_sources, reference=reference_context
         )
