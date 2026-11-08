@@ -41,14 +41,18 @@ class AuditWorker(QThread):
     failed = pyqtSignal(str)
     all_done = pyqtSignal()
 
-    def __init__(self, organizations, db_path, crawler_options=None):
+    def __init__(self, organizations, db_path, crawler_options=None, specification=None):
         super().__init__()
         self.organizations = organizations
         self.db_path = db_path
         self.crawler_options = crawler_options or {}
+        self.specification = specification
 
     def run(self):
-        service = AuditService(self.db_path, crawler_options=self.crawler_options)
+        service = AuditService(
+            self.db_path, crawler_options=self.crawler_options,
+            specification=self.specification,
+        )
         try:
             total = len(self.organizations)
             for index, organization in enumerate(self.organizations, start=1):
@@ -738,7 +742,7 @@ class MainWindow(QMainWindow):
             "balanced": {"max_pages": 60, "max_documents": 12, "seconds": 180, "timeout": 10, "delay": 0.25},
             "deep": {"max_pages": 120, "max_documents": 20, "seconds": 300, "timeout": 12, "delay": 0.35},
         }[preset]
-        self.worker = AuditWorker(organizations, self.db_path, options)
+        self.worker = AuditWorker(organizations, self.db_path, options, self.specification)
         self.worker.progress.connect(self.status.setText)
         self.worker.report_ready.connect(self.display_report)
         self.worker.failed.connect(lambda message: self.status.setText("Ошибка: " + message))
