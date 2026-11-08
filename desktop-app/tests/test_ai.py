@@ -79,3 +79,57 @@ def test_unknown_ai_provider_is_disabled_safely(monkeypatch, provider):
     monkeypatch.setenv("AI_PROVIDER", provider)
     assert ai.public_state()["enabled"] is False
     assert ai.analyze([], [], [])["status"] == "disabled"
+
+
+
+def test_gemini_missing_key_does_not_make_network_request(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    def fail(*args, **kwargs):
+        raise AssertionError("Network must not be used without Gemini API key")
+    monkeypatch.setattr(requests.Session, "post", fail)
+    assert ai.public_state()["enabled"] is False
+    assert ai.test_connection()["status"] == "not_configured"
+    assert ai.analyze([], [], [])["status"] == "disabled"
+
+
+def test_gemini_generate_content_uses_api_key_header_and_filters_urls(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-gemini-key")
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+    calls = []
+
+    def post(self, url, **kwargs):
+        calls.append((url, kwargs))
+        assert kwargs["headers"]["x-goog-api-key"] == "fake-gemini-key"
+        assert kwargs["allow_redirects"] is False
+        if "maxOutputTokens" in kwargs["json"].get("generationConfig", {}):
+            payload = {"suggestions": [{
+                "title": "Сверить новость", "reason": "Есть расхождение.",
+                "recommendation": "Проверить дату.", "urls": [
+                    "https://school.example/news/1", "https://fake.example/no"
+                ],
+            }]}
+            return Reply({"candidates": [{"content": {"parts": [{"text": json.dumps(payload)}]}}]})
+        return Reply({"candidates": [{"content": {"parts": [{"text": "OK"}]}}]})
+
+    monkeypatch.setattr(requests.Session, "post", post)
+    pages = [{
+        "url": "https://school.example/news/1", "title": "Новость",
+        "text": "Текст", "category": "news", "details": {},
+    }]
+    assert ai.test_connection()["status"] == "ok"
+    result = ai.analyze(pages, [], [])
+    assert result["status"] == "completed"
+    assert result["suggestions"][0]["urls"] == ["https://school.example/news/1"]
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("status", [401, 403, 404, 429, 503])
+def test_gemini_http_errors_are_readable(monkeypatch, status):
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-gemini-key")
+    monkeypatch.setattr(requests.Session, "post", lambda *a, **k: Reply({}, status))
+    result = ai.test_connection()
+    assert result["status"] == "failed"
+    assert "Gemini" in result["message"]

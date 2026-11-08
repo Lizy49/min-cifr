@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+import os
 
 from .crawler import Crawler
 from .rules import check
@@ -13,7 +14,13 @@ from . import storage
 class AuditService:
     def __init__(self, db_path=None, crawler_options=None):
         self.db_path = Path(db_path or storage.DEFAULT_DB)
-        self.crawler_options = crawler_options or {}
+        self.crawler_options = crawler_options or {
+            "max_pages": int(os.getenv("CRAWL_MAX_PAGES", "40")),
+            "max_documents": int(os.getenv("CRAWL_MAX_DOCUMENTS", "8")),
+            "seconds": int(os.getenv("CRAWL_SECONDS", "90")),
+            "timeout": int(os.getenv("CRAWL_TIMEOUT", "6")),
+            "delay": float(os.getenv("CRAWL_DELAY", "0.15")),
+        }
 
     def initialize(self):
         storage.initialize(self.db_path)

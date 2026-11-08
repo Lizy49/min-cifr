@@ -43,6 +43,15 @@ class AIError(Exception):
 
 def configuration():
     provider = os.getenv("AI_PROVIDER", "ollama").strip().lower()
+    if provider == "gemini":
+        api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        return {
+            "provider": provider,
+            "model": os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip() or "gemini-3.5-flash-lite",
+            "enabled": bool(api_key),
+            "api_key": api_key,
+            "base_url": os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta").rstrip("/"),
+        }
     if provider == "gigachat":
         credentials = os.getenv("GIGACHAT_CREDENTIALS", "").strip()
         if credentials.lower().startswith("basic "):
@@ -72,6 +81,8 @@ def public_state():
         label = "GigaChat · настроен" if config["enabled"] else "GigaChat · ключ не задан"
     elif config["provider"] == "ollama":
         label = "Ollama · настроен" if config["enabled"] else "Правила аудита · ИИ выключен"
+    elif config["provider"] == "gemini":
+        label = "Gemini · настроен" if config["enabled"] else "Gemini · API-ключ не задан"
     else:
         label = "Неизвестный провайдер ИИ"
     return {key: config[key] for key in ("provider", "model", "enabled")} | {"label": label}
@@ -149,6 +160,39 @@ def _giga_request(session, config, path, payload=None):
     raise AIError("Не удалось обновить токен GigaChat.")
 
 
+def _gemini_request(session, config, payload):
+    if not config["base_url"].startswith("https://"):
+        raise AIError("Для Gemini требуется HTTPS endpoint.")
+    response = session.post(
+        f'{config["base_url"]}/models/{config["model"]}:generateContent',
+        headers={"x-goog-api-key": config["api_key"], "Content-Type": "application/json"},
+        json=payload, timeout=(10, 45), allow_redirects=False,
+    )
+    if not 200 <= response.status_code < 300:
+        messages = {
+            400: "Gemini отклонил запрос. Проверьте модель и формат данных.",
+            401: "Gemini не принял API-ключ. Создайте ключ в Google AI Studio.",
+            403: "У ключа Gemini нет доступа к API или проекту.",
+            404: "Модель Gemini не найдена или недоступна этому проекту.",
+            429: "Достигнут лимит запросов Gemini. Подождите и повторите.",
+            500: "В Gemini произошла внутренняя ошибка.",
+            503: "Gemini временно перегружен.",
+        }
+        raise AIError(messages.get(response.status_code, f"Gemini API вернул HTTP {response.status_code}."))
+    return response.json()
+
+
+def _gemini_text(response):
+    candidates = response.get("candidates", [])
+    if not candidates:
+        raise AIError("Gemini не вернул кандидатов ответа.")
+    parts = candidates[0].get("content", {}).get("parts", [])
+    text = "".join(part.get("text", "") for part in parts if isinstance(part, dict))
+    if not text:
+        raise AIError("Gemini вернул пустой ответ.")
+    return text
+
+
 def _safe_error(exc):
     if isinstance(exc, AIError):
         return str(exc)
@@ -168,7 +212,14 @@ def test_connection():
     try:
         with requests.Session() as session:
             session.trust_env = False
-            if config["provider"] == "gigachat":
+            if config["provider"] == "gemini":
+                response = _gemini_request(session, config, {
+                    "contents": [{"role": "user", "parts": [{"text": "Ответь только OK."}]}],
+                    "generationConfig": {"maxOutputTokens": 8, "temperature": 0},
+                })
+                _gemini_text(response)
+                models = [config["model"]]
+            elif config["provider"] == "gigachat":
                 data = _giga_request(session, config, "/models")
                 models = [str(item["id"]) for item in data.get("data", [])
                           if isinstance(item, dict) and item.get("id")]
@@ -194,6 +245,8 @@ def analyze(pages, findings, external_sources):
         msg = "ИИ выключен. Выполнены детерминированные проверки; смысловой анализ требует ручной сверки."
         if config["provider"] == "gigachat":
             msg = "GigaChat выбран, но ключ не задан. Добавьте GIGACHAT_CREDENTIALS в .env."
+        elif config["provider"] == "gemini":
+            msg = "Gemini выбран, но API-ключ не задан. Добавьте GEMINI_API_KEY в .env."
         return {**common, "status": "disabled", "suggestions": [], "message": msg}
 
     site_context = [
@@ -235,7 +288,23 @@ def analyze(pages, findings, external_sources):
     try:
         with requests.Session() as session:
             session.trust_env = False
-            if config["provider"] == "gigachat":
+            if config["provider"] == "gemini":
+                payload = {
+                    "systemInstruction": {"parts": [{"text": system}]},
+                    "contents": [{"role": "user", "parts": [{"text": json.dumps({
+                        "site_pages": site_context,
+                        "external_sources": external_context,
+                        "rule_results": rule_context,
+                    }, ensure_ascii=False)}]}],
+                    "generationConfig": {
+                        "responseMimeType": "application/json",
+                        "temperature": 0.1,
+                        "maxOutputTokens": 1800,
+                    },
+                }
+                response = _gemini_request(session, config, payload)
+                content = _gemini_text(response)
+            elif config["provider"] == "gigachat":
                 payload = {
                     "model": config["model"], "stream": False, "messages": messages,
                     "temperature": 0.1, "max_tokens": 2500,

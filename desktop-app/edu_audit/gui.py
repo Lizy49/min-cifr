@@ -23,19 +23,27 @@ STATUS_LABELS = {
 }
 
 
+class AIConnectionWorker(QThread):
+    finished = pyqtSignal(dict)
+
+    def run(self):
+        self.finished.emit(test_connection())
+
+
 class AuditWorker(QThread):
     progress = pyqtSignal(str)
     report_ready = pyqtSignal(dict)
     failed = pyqtSignal(str)
     all_done = pyqtSignal()
 
-    def __init__(self, organizations, db_path):
+    def __init__(self, organizations, db_path, crawler_options=None):
         super().__init__()
         self.organizations = organizations
         self.db_path = db_path
+        self.crawler_options = crawler_options or {}
 
     def run(self):
-        service = AuditService(self.db_path)
+        service = AuditService(self.db_path, crawler_options=self.crawler_options)
         try:
             for organization in self.organizations:
                 self.progress.emit("Проверяется: " + organization["name"])
@@ -95,9 +103,15 @@ class MainWindow(QMainWindow):
         self.kind_filter.currentIndexChanged.connect(self.refresh_registry)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Поиск по названию учреждения")
+        self.speed_preset = QComboBox()
+        self.speed_preset.addItem("Быстро · 30 страниц", "fast")
+        self.speed_preset.addItem("Баланс · 60 страниц", "balanced")
+        self.speed_preset.addItem("Глубоко · 120 страниц", "deep")
         self.search.textChanged.connect(self.refresh_registry)
         filters.addWidget(self.kind_filter)
         filters.addWidget(self.search, 1)
+        filters.addWidget(QLabel("Режим:"))
+        filters.addWidget(self.speed_preset)
         layout.addLayout(filters)
 
         actions = QHBoxLayout()
@@ -202,8 +216,15 @@ class MainWindow(QMainWindow):
             QLabel#Counter { font-size:16px; font-weight:700; color:#176a62; }
             QLabel#Status { color:#44546a; padding:5px; }
             QComboBox,QLineEdit { background:white; border:1px solid #cbd5e1; padding:9px; border-radius:7px; }
-            QPushButton { background:#e6edf5; border:1px solid #cad5e2; padding:10px 14px; border-radius:7px; font-weight:600; }
-            QPushButton:hover { background:#d9e6f3; }
+            QPushButton { background:#e6edf5; border:1px solid #cad5e2; padding:11px 16px; border-radius:9px; font-weight:650; }
+            QPushButton:hover { background:#d9e6f3; border-color:#8caac4; }
+            QPushButton:default { background:#126b82; color:white; border-color:#126b82; }
+            QPushButton:default:hover { background:#0d596d; }
+            QComboBox { min-height:20px; }
+            QTabBar::tab { margin-right:4px; border-top-left-radius:8px; border-top-right-radius:8px; }
+            QTableWidget { alternate-background-color:#f7f9fc; }
+            QTableWidget::item { padding:6px; border-bottom:1px solid #edf1f5; }
+            QTableWidget::item:selected { color:#122f52; background:#dcecf7; }
             QPushButton:disabled { color:#98a2b3; }
             QPushButton:default { background:#145b87; color:white; }
             QTabWidget::pane { border:1px solid #d8e0e9; background:white; border-radius:8px; }
@@ -286,7 +307,15 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Ошибка настройки источников", str(exc))
 
     def check_ai_connection(self):
-        result = test_connection()
+        if getattr(self, "ai_worker", None) and self.ai_worker.isRunning():
+            return
+        self.ai_check_button.setEnabled(False)
+        self.ai_check_button.setText("Проверяем соединение…")
+        self.ai_worker = AIConnectionWorker()
+        self.ai_worker.finished.connect(self._ai_connection_finished)
+        self.ai_worker.start()
+
+    def _ai_connection_finished(self, result):
         self.ai_state_label.setText(public_state()["label"])
         details = [
             f"<h3>{html.escape(result.get('message', ''))}</h3>",
@@ -295,6 +324,8 @@ class MainWindow(QMainWindow):
         for model in result.get("models", []):
             details.append(f"<p>{html.escape(str(model))}</p>")
         self.ai_details.setHtml("".join(details))
+        self.ai_check_button.setEnabled(True)
+        self.ai_check_button.setText("Проверить подключение ИИ")
 
     def check_selected(self):
         selected = self._selected_organizations()
@@ -322,7 +353,13 @@ class MainWindow(QMainWindow):
         self.check_all_button.setEnabled(False)
         self.progress.show()
         self.status.setText(f"В очереди учреждений: {len(organizations)}")
-        self.worker = AuditWorker(organizations, self.db_path)
+        preset = self.speed_preset.currentData()
+        options = {
+            "fast": {"max_pages": 30, "max_documents": 6, "seconds": 75, "timeout": 6, "delay": 0.12},
+            "balanced": {"max_pages": 60, "max_documents": 12, "seconds": 180, "timeout": 10, "delay": 0.25},
+            "deep": {"max_pages": 120, "max_documents": 20, "seconds": 300, "timeout": 12, "delay": 0.35},
+        }[preset]
+        self.worker = AuditWorker(organizations, self.db_path, options)
         self.worker.progress.connect(self.status.setText)
         self.worker.report_ready.connect(self.display_report)
         self.worker.failed.connect(lambda message: self.status.setText("Ошибка: " + message))
