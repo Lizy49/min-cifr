@@ -46,7 +46,7 @@ class AIError(Exception):
 
 
 def configuration():
-    provider = os.getenv("AI_PROVIDER", "ollama").strip().lower()
+    provider = os.getenv("AI_PROVIDER", "alice").strip().lower()
     if provider == "alice":
         api_key = os.getenv("YANDEX_API_KEY", "").strip()
         folder_id = os.getenv("YANDEX_FOLDER_ID", "").strip()
