@@ -36,7 +36,7 @@ def test_alice_reviews_required_sections_and_exports_grounded_suggestions(monkey
         assert kwargs["headers"] == {"Authorization": "Api-Key test-key", "OpenAI-Project": "test-folder"}
         assert kwargs["allow_redirects"] is False
         payload = kwargs["json"]
-        assert payload["model"] == "gpt://test-folder/aliceai-llm/latest"
+        assert payload["model"] == "gpt://test-folder/aliceai-llm"
         assert payload["store"] is False
         assert "text" not in payload
         assert "max_output_tokens" in payload
@@ -333,3 +333,46 @@ def test_deepseek_analysis_compares_reference_site_and_keeps_reference_urls(monk
     assert result["suggestions"][0]["urls"] == [
         "https://reference.example/about", "https://target.example/about"
     ]
+
+
+def test_alice_uses_only_final_answer_message(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "alice")
+    monkeypatch.setenv("YANDEX_API_KEY", "test-key")
+    monkeypatch.setenv("YANDEX_FOLDER_ID", "test-folder")
+
+    def post(self, url, **kwargs):
+        return Reply({
+            "status": "completed",
+            "output": [
+                {"type": "message", "phase": "commentary",
+                 "content": [{"type": "output_text", "text": "Черновой комментарий."}]},
+                {"type": "reasoning"},
+                {"type": "message", "phase": "final_answer",
+                 "content": [{"type": "output_text", "text": "OK"}]},
+            ],
+        })
+
+    monkeypatch.setattr(requests.Session, "post", post)
+    result = ai.test_connection()
+    assert result["status"] == "ok"
+
+
+@pytest.mark.parametrize(
+    ("status", "details", "expected"),
+    [
+        ("in_progress", {}, "ещё обрабатывает"),
+        ("incomplete", {"incomplete_details": {"reason": "max_output_tokens"}}, "лимит выходных токенов"),
+        ("failed", {"error": {"code": "server_error"}}, "server_error"),
+    ],
+)
+def test_alice_reports_non_completed_responses_safely(monkeypatch, status, details, expected):
+    monkeypatch.setenv("AI_PROVIDER", "alice")
+    monkeypatch.setenv("YANDEX_API_KEY", "test-key")
+    monkeypatch.setenv("YANDEX_FOLDER_ID", "test-folder")
+    monkeypatch.setattr(requests.Session, "post", lambda *args, **kwargs: Reply(
+        {"status": status, **details}
+    ))
+    result = ai.test_connection()
+    assert result["status"] == "failed"
+    assert expected in result["message"]
+    assert "test-key" not in result["message"]
