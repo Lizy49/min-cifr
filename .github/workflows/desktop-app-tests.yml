@@ -1,0 +1,35 @@
+name: Desktop app tests
+
+on:
+  push:
+    branches:
+      - "app/desktop-audit"
+    paths:
+      - "desktop-app/**"
+      - ".github/workflows/desktop-app-tests.yml"
+  pull_request:
+    paths:
+      - "desktop-app/**"
+      - ".github/workflows/desktop-app-tests.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: desktop-app/requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+      - name: Compile Python modules
+        run: python -m compileall -q edu_audit run.py
+      - name: Run tests
+        run: python -m pytest -q
