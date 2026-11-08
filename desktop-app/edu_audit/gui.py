@@ -19,7 +19,6 @@ from . import storage
 from .exporters import export_csv, export_html, export_summary_csv, export_summary_html
 from .service import AuditService
 from .ai import public_state, test_connection
-from .requirements_parser import parse_specification
 
 STATUS_LABELS = {
     "completed": "Завершена", "failed": "Не удалось проверить",
@@ -155,15 +154,13 @@ class MainWindow(QMainWindow):
         self.db_path = self.service.db_path
         self.worker = None
         self.current_report = None
-        self.specification = storage.get_setting("active_specification", self.db_path)
+        self.specification = None
         self.setWindowTitle("Gosweb Audit — аудит сайтов образования")
         self.resize(1480, 960)
-        self.setMinimumSize(1080, 760)
+        self.setMinimumSize(960, 680)
         self._build_ui()
         self.refresh_registry()
         self.refresh_history()
-        if self.specification:
-            self._render_specification(self.specification)
 
     def _build_ui(self):
         root = QWidget()
@@ -174,7 +171,7 @@ class MainWindow(QMainWindow):
 
         sidebar = QFrame()
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(224)
+        sidebar.setFixedWidth(200)
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(18, 24, 18, 20)
         sidebar_layout.setSpacing(10)
@@ -204,6 +201,7 @@ class MainWindow(QMainWindow):
         title.setObjectName("Title")
         subtitle = QLabel("Проверка актуальности и полноты сайтов образовательных организаций Магаданской области")
         subtitle.setObjectName("Subtitle")
+        subtitle.setWordWrap(True)
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
         heading.addLayout(title_box, 1)
@@ -243,7 +241,8 @@ class MainWindow(QMainWindow):
         self.kind_filter.addItem("Детские сады", "garden")
         self.kind_filter.currentIndexChanged.connect(self.refresh_registry)
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Поиск по названию учреждения")
+        self.search.setPlaceholderText("Найти учреждение…")
+        self.search.setClearButtonEnabled(True)
         self.speed_preset = QComboBox()
         self.speed_preset.addItem("Быстро · 30 страниц", "fast")
         self.speed_preset.addItem("Баланс · 60 страниц", "balanced")
@@ -257,15 +256,12 @@ class MainWindow(QMainWindow):
         filters.addWidget(self.search, 1)
         filters.addWidget(QLabel("Режим:"))
         filters.addWidget(self.speed_preset)
-        layout.addLayout(filters)
 
         actions = QHBoxLayout()
         self.set_reference_button = QPushButton("Назначить эталоном")
         self.set_reference_button.clicked.connect(self.set_reference)
         self.fact_sources_button = QPushButton("Источники фактчекинга")
         self.fact_sources_button.clicked.connect(self.edit_fact_sources)
-        actions.addWidget(self.set_reference_button)
-        actions.addWidget(self.fact_sources_button)
         self.check_selected_button = QPushButton("Проверить выбранное")
         self.check_all_button = QPushButton("Проверить весь список")
         self.cancel_button = QPushButton("Остановить")
@@ -276,8 +272,8 @@ class MainWindow(QMainWindow):
         self.check_selected_button.setObjectName("PrimaryButton")
         self.export_html_button = QPushButton("Экспорт отчёта HTML")
         self.export_csv_button = QPushButton("Экспорт отчёта CSV")
-        self.export_summary_button = QPushButton("Сводный рейтинг")
-        self.export_summary_button.setToolTip("Сохранить рейтинг по последним завершённым проверкам всех учреждений")
+        self.export_summary_button = QPushButton("Сводка по учреждениям")
+        self.export_summary_button.setToolTip("Сохранить таблицу результатов последних завершённых проверок")
         self.export_summary_button.clicked.connect(self.export_summary)
         self.check_selected_button.clicked.connect(self.check_selected)
         self.check_all_button.clicked.connect(self.check_all)
@@ -285,10 +281,8 @@ class MainWindow(QMainWindow):
         self.export_csv_button.clicked.connect(lambda: self.export_report("csv"))
         self.export_html_button.setEnabled(False)
         self.export_csv_button.setEnabled(False)
-        for button in (self.check_selected_button, self.check_all_button, self.cancel_button,
-                       self.export_html_button, self.export_csv_button, self.export_summary_button):
+        for button in (self.check_selected_button, self.check_all_button, self.cancel_button):
             actions.addWidget(button)
-        layout.addLayout(actions)
 
         self.progress = QProgressBar()
         self.progress.setRange(0, 0)
@@ -303,6 +297,11 @@ class MainWindow(QMainWindow):
 
         registry_tab = QWidget()
         registry_layout = QVBoxLayout(registry_tab)
+        registry_layout.addLayout(filters)
+        registry_layout.addLayout(actions)
+        registry_hint = QLabel("1. Найдите и выделите учреждения.  2. Запустите проверку.  3. Откройте результаты и сохраните отчёт.")
+        registry_hint.setWordWrap(True)
+        registry_layout.addWidget(registry_hint)
         self.registry = QTableWidget(0, 5)
         self.registry.setHorizontalHeaderLabels(["Учреждение", "Тип", "Сайт", "Эталон", "Последняя проверка"])
         self.registry.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
@@ -317,10 +316,20 @@ class MainWindow(QMainWindow):
         self.registry.verticalHeader().setVisible(False)
         self.registry.verticalHeader().setDefaultSectionSize(42)
         registry_layout.addWidget(self.registry)
+        reference_actions = QHBoxLayout()
+        reference_actions.addWidget(self.set_reference_button)
+        reference_actions.addWidget(self.fact_sources_button)
+        reference_actions.addStretch()
+        registry_layout.addLayout(reference_actions)
         self.tabs.addTab(registry_tab, "Реестр учреждений")
 
         report_tab = QWidget()
         report_layout = QVBoxLayout(report_tab)
+        report_actions = QHBoxLayout()
+        report_actions.addWidget(self.export_html_button)
+        report_actions.addWidget(self.export_csv_button)
+        report_actions.addStretch()
+        report_layout.addLayout(report_actions)
         splitter = QSplitter(Qt.Orientation.Vertical)
         self.findings = QTableWidget(0, 5)
         self.findings.setHorizontalHeaderLabels(["Статус", "Приоритет", "Раздел", "Проблема", "Доказательств"])
@@ -344,6 +353,10 @@ class MainWindow(QMainWindow):
 
         history_tab = QWidget()
         history_layout = QVBoxLayout(history_tab)
+        history_actions = QHBoxLayout()
+        history_actions.addWidget(self.export_summary_button)
+        history_actions.addStretch()
+        history_layout.addLayout(history_actions)
         self.history = QTableWidget(0, 6)
         self.history.setHorizontalHeaderLabels(["ID", "Учреждение", "Тип", "Статус", "Дата", "Страниц"])
         self.history.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -378,31 +391,28 @@ class MainWindow(QMainWindow):
         ai_layout.addWidget(self.ai_details, 1)
         self.tabs.addTab(ai_tab, "ИИ-анализ")
 
-        spec_tab = QWidget()
-        spec_layout = QVBoxLayout(spec_tab)
-        spec_heading = QLabel("Разбор технического задания")
-        spec_heading.setObjectName("SectionTitle")
-        spec_description = QLabel(
-            "Загрузите исходное ТЗ в PDF, DOCX или TXT. Приложение выделит отдельные требования, "
-            "попробует распознать явные числовые критерии и оставит неоднозначные пункты на ручную проверку."
+        checklist_tab = QWidget()
+        checklist_layout = QVBoxLayout(checklist_tab)
+        checklist = QTextBrowser()
+        checklist.setHtml(
+            "<h2>Что проверяет программа</h2>"
+            "<p>Требования кейса уже встроены. Загружать техническое задание не нужно.</p>"
+            "<h3>Новости</h3><p>Интервалы до 14 дней; публикация в течение 24 часов после события "
+            "при наличии точных дат. Если данных не хватает — нужна ручная проверка.</p>"
+            "<h3>Школы</h3><p>Мероприятия текущего и следующего квартала, документы, расписание, "
+            "сведения о школе, руководство, педагоги и контакты.</p>"
+            "<h3>Детские сады</h3><p>Главная страница, новости, коллектив, образовательные программы, "
+            "документы, раздел для педагогов и сотрудников, контакты и режим работы.</p>"
+            "<h3>Эталон и внешние источники</h3><p>Выберите эталон для каждого типа учреждения и "
+            "сначала проверьте его. Внешние ссылки для сверки новостей задаются в реестре. "
+            "Подсказки ИИ требуют подтверждения человеком.</p>"
+            "<h3>Отчёт</h3><p>Откройте замечание: показаны основание, ссылка, приоритет и рекомендация. "
+            "HTML можно распечатать в PDF через браузер. Сводка в истории объединяет результаты учреждений.</p>"
+            "<p><b>Ограничения:</b> обход выборочный; JavaScript и качество фотографий могут требовать "
+            "ручного просмотра. Неопределённый результат не означает нарушение.</p>"
         )
-        spec_description.setObjectName("Subtitle")
-        spec_description.setWordWrap(True)
-        self.load_spec_button = QPushButton("Выбрать файл технического задания")
-        self.load_spec_button.setObjectName("PrimaryButton")
-        self.load_spec_button.clicked.connect(self.load_specification)
-        self.spec_details = QTextBrowser()
-        self.spec_details.setOpenExternalLinks(False)
-        self.spec_details.setHtml(
-            "<h2>Техническое задание ещё не загружено</h2>"
-            "<p>После импорта здесь появится список требований и результат их предварительной классификации.</p>"
-            "<p><b>Важно:</b> извлечение создаёт черновик. Оно не превращает предположения в доказанные нарушения.</p>"
-        )
-        spec_layout.addWidget(spec_heading)
-        spec_layout.addWidget(spec_description)
-        spec_layout.addWidget(self.load_spec_button)
-        spec_layout.addWidget(self.spec_details, 1)
-        self.tabs.addTab(spec_tab, "Техническое задание")
+        checklist_layout.addWidget(checklist)
+        self.tabs.addTab(checklist_tab, "Правила проверки")
         self.tabs.tabBar().hide()
 
         self.nav_buttons = []
@@ -411,7 +421,7 @@ class MainWindow(QMainWindow):
             ("◉   Результаты проверки", 1),
             ("◷   История аудитов", 2),
             ("✧   ИИ-анализ", 3),
-            ("▤   Техническое задание", 4),
+            ("▤   Правила проверки", 4),
         ):
             button = QPushButton(label)
             button.setObjectName("NavButton")
@@ -597,57 +607,6 @@ class MainWindow(QMainWindow):
     def _selected_organizations(self):
         rows = sorted({item.row() for item in self.registry.selectedItems()})
         return [self.registry.item(row, 0).data(Qt.ItemDataRole.UserRole) for row in rows]
-
-    def load_specification(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Загрузить техническое задание", "",
-            "Документы (*.pdf *.docx *.txt);;PDF (*.pdf);;Word (*.docx);;Текст (*.txt)",
-        )
-        if not path:
-            return
-        try:
-            result = parse_specification(path)
-            self.specification = result
-            storage.set_setting("active_specification", result, self.db_path)
-            self._render_specification(result)
-            self.status.setText(
-                f"ТЗ загружено: {result['total']} требований; "
-                f"{result['structured']} распознано, {result['manual']} требуют классификации."
-            )
-            self.tabs.setCurrentIndex(4)
-        except (OSError, ValueError, ImportError) as exc:
-            QMessageBox.critical(self, "Не удалось разобрать ТЗ", str(exc))
-
-    def _render_specification(self, result):
-        cards = [
-            f"<h2>{html.escape(result['source_name'])}</h2>",
-            f"<p><b>Найдено пунктов:</b> {result['total']} · "
-            f"<b>Распознано структурно:</b> {result['structured']} · "
-            f"<b>Нужна ручная классификация:</b> {result['manual']}</p>",
-            f"<p>{html.escape(result['note'])}</p>",
-            "<hr>",
-        ]
-        for item in result["requirements"]:
-            threshold = ", ".join(
-                f"{html.escape(key)} = {html.escape(str(value))}"
-                for key, value in item["threshold"].items()
-            ) or "порог не определён"
-            mode = (
-                "Распознано, требуется подтверждение"
-                if item["verification"] != "manual" else "Ручная классификация"
-            )
-            cards.append(
-                f"<section><h3>{html.escape(item['id'])} · {html.escape(item['category'])}</h3>"
-                f"<p>{html.escape(item['text'])}</p>"
-                f"<p><b>Тип проверки:</b> {html.escape(item['verification'])} · "
-                f"<b>Статус:</b> {mode}</p><p><b>Параметры:</b> {threshold}</p></section><hr>"
-            )
-        cards.append(
-            "<p><b>Ограничение текущей версии:</b> импортированный черновик не заменяет "
-            "встроенные правила проверки. Пункты попадут в отчёт как требующие ручной проверки, "
-            "а ИИ получит их как дополнительный контекст. Они не считаются доказанными нарушениями.</p>"
-        )
-        self.spec_details.setHtml("".join(cards))
 
     def set_reference(self):
         selected = self._selected_organizations()
@@ -888,7 +847,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Gosweb Audit", "Пока нет завершённых проверок для сводного рейтинга.")
             return
         path, selected_filter = QFileDialog.getSaveFileName(
-            self, "Сохранить сводный рейтинг", "gosweb-summary.html",
+            self, "Сохранить сводку по учреждениям", "gosweb-summary.html",
             "HTML для просмотра и печати (*.html);;Таблица CSV (*.csv)",
         )
         if not path:
@@ -902,7 +861,7 @@ class MainWindow(QMainWindow):
                 if not path.lower().endswith(".html"):
                     path += ".html"
                 export_summary_html(reports, path)
-            QMessageBox.information(self, "Gosweb Audit", f"Сводный рейтинг сохранён:\n{path}")
+            QMessageBox.information(self, "Gosweb Audit", f"Сводка по учреждениям сохранён:\n{path}")
         except OSError as exc:
             QMessageBox.critical(self, "Ошибка экспорта", str(exc))
 

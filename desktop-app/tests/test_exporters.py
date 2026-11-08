@@ -23,8 +23,7 @@ def test_individual_report_explains_index_and_retains_manual_review_warning(tmp_
     assert report_score(report) == 50
     export_html(report, path)
     result = path.read_text(encoding="utf-8")
-    assert "Индекс пройденных автоматических проверок" in result
-    assert "а не экспертная оценка точности" in result
+    assert "Индекс пройденных автоматических проверок" not in result
     assert result.index("unknown") < result.index("pass")
 
 
@@ -39,6 +38,7 @@ def test_summary_exports_rank_latest_reports_and_disclose_formula(tmp_path):
 
     html_text = html_path.read_text(encoding="utf-8")
     csv_text = csv_path.read_text(encoding="utf-8-sig")
-    assert html_text.index("Школа Б") < html_text.index("Школа А")
-    assert "не является официальной оценкой" in html_text
-    assert "Индекс пройденных проверок" in csv_text
+    assert html_text.index("Школа А") < html_text.index("Школа Б")
+    assert "не означает нарушение" in html_text
+    assert "Индекс пройденных проверок" not in csv_text
+    assert "Нужна ручная проверка" in csv_text

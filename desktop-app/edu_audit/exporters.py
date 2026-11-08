@@ -62,8 +62,6 @@ def export_html(report, destination):
     problems = sum(item.get("status") in ("warning", "error") for item in findings)
     unknown = sum(item.get("status") == "unknown" for item in findings)
     passed = sum(item.get("status") == "pass" for item in findings)
-    score = report_score(report)
-    score_label = f"{score} из 100" if score is not None else "недостаточно данных"
     page = f"""<!doctype html><html lang="ru"><head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1"><title>Отчёт — {esc(org["name"])}</title>
     <style>body{{font:15px/1.55 Arial,sans-serif;color:#202939;max-width:1000px;margin:32px auto;padding:0 22px}}
@@ -76,8 +74,7 @@ def export_html(report, destination):
     <p><b>Сайт:</b> <a href="{esc(org["url"])}">{esc(org["url"])}</a></p>
     <p><b>Дата:</b> {esc(report.get("created_at"))}</p>
     <p><b>Проверено страниц:</b> {len(report.get("pages", []))}</p>
-    <section class="summary"><p><b>Индекс пройденных автоматических проверок:</b> <span class="badge">{score_label}</span></p>
-    <p>Расчёт: доля проверок со статусом «Пройдено» от всех проверок, включая требующие ручной сверки. Это показатель отчёта, а не экспертная оценка точности или качества сайта.</p>
+    <section class="summary">
     <p><b>Сначала проверьте:</b> {problems} замечаний/проблем; неопределённо — {unknown}; пройдено — {passed}.</p></section>
     <p><b>Ограниченный обход:</b> {"Да" if report.get("meta", {}).get("limited") else "Нет"}</p>
     <p>{esc(report.get("meta", {}).get("note"))}</p>{"".join(rows)}
@@ -91,17 +88,16 @@ def export_summary_csv(reports, destination):
     destination = Path(destination)
     with destination.open("w", encoding="utf-8-sig", newline="") as stream:
         writer = csv.writer(stream, delimiter=";")
-        writer.writerow(["Место", "Учреждение", "Тип", "Сайт", "Индекс пройденных проверок, %",
+        writer.writerow(["Учреждение", "Тип", "Сайт",
                          "Проблемы и замечания", "Нужна ручная проверка", "Пройдено", "Дата", "Проверено страниц"])
         ranked = sorted(reports, key=lambda report: (
-            -(report_score(report) if report_score(report) is not None else -1),
             report["organization"]["name"].casefold(),
         ))
         for place, report in enumerate(ranked, start=1):
             findings = report.get("findings", [])
-            values = [place, report["organization"]["name"],
+            values = [report["organization"]["name"],
                       "Школа" if report["organization"]["kind"] == "school" else "Детский сад",
-                      report["organization"]["url"], report_score(report),
+                      report["organization"]["url"],
                       sum(item.get("status") in ("warning", "error") for item in findings),
                       sum(item.get("status") == "unknown" for item in findings),
                       sum(item.get("status") == "pass" for item in findings),
@@ -115,7 +111,6 @@ def export_summary_html(reports, destination):
     destination = Path(destination)
     esc = lambda value: html.escape(str(value or ""), quote=True)
     ranked = sorted(reports, key=lambda report: (
-        -(report_score(report) if report_score(report) is not None else -1),
         report["organization"]["name"].casefold(),
     ))
     rows = []
@@ -123,19 +118,18 @@ def export_summary_html(reports, destination):
         findings = report.get("findings", [])
         org = report["organization"]
         rows.append(
-            f'<tr><td>{place}</td><td>{esc(org["name"])}</td>'
+            f'<tr><td>{esc(org["name"])}</td>'
             f'<td>{"Школа" if org["kind"] == "school" else "Детский сад"}</td>'
             f'<td><a href="{esc(org["url"])}">Открыть сайт</a></td>'
-            f'<td><b>{report_score(report) if report_score(report) is not None else "—"}</b></td>'
             f'<td>{sum(item.get("status") in ("warning", "error") for item in findings)}</td>'
             f'<td>{sum(item.get("status") == "unknown" for item in findings)}</td>'
             f'<td>{esc(report.get("created_at", ""))}</td></tr>'
         )
     page = f"""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Сводный рейтинг — Gosweb Audit</title><style>body{{font:15px/1.5 Arial,sans-serif;color:#202939;max-width:1200px;margin:32px auto;padding:0 22px}}h1{{font-size:26px}}.note{{background:#f2f6fb;padding:14px;border-radius:9px}}table{{width:100%;border-collapse:collapse;margin-top:20px}}th,td{{text-align:left;padding:10px;border-bottom:1px solid #d9e0e8}}th{{background:#edf2f8}}tr{{break-inside:avoid}}a{{color:#1756a9}}@media print{{body{{margin:12mm auto}}}}</style></head><body>
-    <h1>Gosweb Audit — сводный рейтинг учреждений</h1><p>Сформирован: {esc(datetime.now().astimezone().strftime("%d.%m.%Y %H:%M"))}. Включены последние завершённые проверки.</p>
-    <p class="note"><b>Как читать индекс:</b> доля автоматических проверок со статусом «Пройдено» от общего числа сформированных проверок. Он помогает расставить порядок просмотра отчётов, но не подтверждает точность краулера и не является официальной оценкой качества сайта. Статус «Нужна ручная проверка» не означает нарушение; учитывайте дату, охват и ограничения обхода.</p>
-    <table><thead><tr><th>Место</th><th>Учреждение</th><th>Тип</th><th>Сайт</th><th>Индекс, %</th><th>Замечания/проблемы</th><th>Ручная сверка</th><th>Последняя проверка</th></tr></thead><tbody>{"".join(rows)}</tbody></table>
+    <title>Сводка результатов — Gosweb Audit</title><style>body{{font:15px/1.5 Arial,sans-serif;color:#202939;max-width:1200px;margin:32px auto;padding:0 22px}}h1{{font-size:26px}}.note{{background:#f2f6fb;padding:14px;border-radius:9px}}table{{width:100%;border-collapse:collapse;margin-top:20px}}th,td{{text-align:left;padding:10px;border-bottom:1px solid #d9e0e8}}th{{background:#edf2f8}}tr{{break-inside:avoid}}a{{color:#1756a9}}@media print{{body{{margin:12mm auto}}}}</style></head><body>
+    <h1>Gosweb Audit — сводка результатов учреждений</h1><p>Сформирован: {esc(datetime.now().astimezone().strftime("%d.%m.%Y %H:%M"))}. Включены последние завершённые проверки.</p>
+    <p class="note">Учреждения перечислены по названию. Показаны замечания и пункты для ручной сверки. Статус «Нужна ручная проверка» не означает нарушение. Учитывайте дату и охват каждой проверки.</p>
+    <table><thead><tr><th>Учреждение</th><th>Тип</th><th>Сайт</th><th>Замечания/проблемы</th><th>Ручная сверка</th><th>Последняя проверка</th></tr></thead><tbody>{"".join(rows)}</tbody></table>
     </body></html>"""
     destination.write_text(page, encoding="utf-8")
     return destination

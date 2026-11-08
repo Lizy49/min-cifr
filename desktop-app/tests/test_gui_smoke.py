@@ -18,7 +18,11 @@ def test_main_window_constructs_with_a_fresh_database(tmp_path, monkeypatch):
     assert window.search_timer.interval() == 250
     assert window.search_timer.isSingleShot()
     assert window.tabs.count() == 5
-    assert window.load_spec_button.isEnabled()
+    assert window.tabs.tabText(4) == "Правила проверки"
+    assert window.specification is None
+    assert not hasattr(window, "load_spec_button")
+    assert window.export_html_button.parent() == window.tabs.widget(1)
+    assert window.check_selected_button.parent() == window.tabs.widget(0)
     assert window.cancel_button.isHidden()
     window.close()
     app.processEvents()
