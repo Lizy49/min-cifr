@@ -83,11 +83,13 @@ def check(kind, crawl, now=None):
         if section == "main":
             # For kindergartens the home page itself is required; another "about" page
             # must not accidentally count as the homepage.
-            start_url = crawl.get("start_url", "")
-            found = [p for p in html if p.get("url") == start_url]
-            if not found and pages:
-                first_url = pages[0].get("url")
-                found = [p for p in html if p.get("url") == first_url]
+            start_url = crawl.get("start_url")
+            if start_url:
+                found = [p for p in html if p.get("url") == start_url]
+            else:
+                # Backward-compatible fallback for unit tests and imported crawl data
+                # that does not carry an explicit starting URL.
+                found = html[:1]
         if not found:
             add("section." + section, SECTION_TITLES[section], "unknown", "Раздел не распознан",
                 "В проверенной выборке не найден раздел с ожидаемыми признаками. Он может называться иначе или находиться за пределами обхода.",
