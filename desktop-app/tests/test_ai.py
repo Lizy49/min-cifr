@@ -33,7 +33,7 @@ def test_alice_reviews_required_sections_and_exports_grounded_suggestions(monkey
 
     def post(self, url, **kwargs):
         assert url == "https://ai.api.cloud.yandex.net/v1/responses"
-        assert kwargs["headers"] == {"Authorization": "Api-Key test-key", "OpenAI-Project": "test-folder", "Content-Type": "application/json", "Accept": "application/json"}
+        assert kwargs["headers"] == {"Authorization": "Api-Key test-key", "Content-Type": "application/json"}
         assert kwargs["allow_redirects"] is False
         payload = kwargs["json"]
         assert payload["model"] == "gpt://test-folder/aliceai-llm"
